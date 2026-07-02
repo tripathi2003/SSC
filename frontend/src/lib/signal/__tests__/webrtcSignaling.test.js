@@ -26,17 +26,19 @@ jest.mock('../groupMessages', () => ({
 import { usesSignalOnlyMessaging } from '../installedMessaging';
 import { isNativeLibsignalAvailable } from '../nativeLibsignal';
 import { ensureSignalSession } from '../x3dh';
-import { canUseSignalMessaging, encryptSignalText } from '../messages';
+import { canUseSignalMessaging, encryptSignalText, decryptSignalText } from '../messages';
 import {
   canUseSignalGroupMessaging,
   ensureGroupSenderKeysDistributed,
   encryptGroupText,
+  decryptGroupText,
 } from '../groupMessages';
 import {
   SignalingFailureReason,
   SignalingNotReadyError,
   SignalingProtocol,
   packOutgoingSignaling,
+  unpackIncomingSignaling,
   signalingErrorI18nKey,
 } from '../webrtcSignaling';
 
@@ -194,5 +196,50 @@ describe('webrtcSignaling', () => {
         conversationId,
       }),
     ).rejects.toMatchObject({ reason: SignalingFailureReason.ENCRYPT_FAILED });
+  });
+
+  it('unpackIncomingSignaling decrypts group signal_v1 call-offer', async () => {
+    decryptGroupText.mockResolvedValue(JSON.stringify({ sdp: { type: 'offer', sdp: 'v=0' } }));
+
+    const incoming = {
+      type: 'call-offer',
+      from: 'sender1',
+      group: true,
+      signaling_protocol: SignalingProtocol.SIGNAL_V1,
+      signaling_ciphertext: 'gct',
+      signal_message_type: 7,
+      distribution_id: 'dist-1',
+    };
+
+    const result = await unpackIncomingSignaling(incoming, { myUserId: 'me', peerUserId: 'sender1' });
+
+    expect(result.sdp).toEqual({ type: 'offer', sdp: 'v=0' });
+    expect(decryptGroupText).toHaveBeenCalledWith('sender1', expect.objectContaining({
+      ciphertext: 'gct',
+      signal_message_type: 7,
+      sender_id: 'sender1',
+    }));
+  });
+
+  it('unpackIncomingSignaling decrypts group signal_v1 ice-candidate', async () => {
+    decryptGroupText.mockResolvedValue(JSON.stringify({ candidate: { candidate: 'c1', sdpMid: '0' } }));
+
+    const incoming = {
+      type: 'ice-candidate',
+      from: 'sender2',
+      group: true,
+      signaling_protocol: SignalingProtocol.SIGNAL_V1,
+      signaling_ciphertext: 'gct2',
+      signal_message_type: 7,
+      distribution_id: 'dist-2',
+    };
+
+    const result = await unpackIncomingSignaling(incoming, { myUserId: 'me', peerUserId: 'sender2' });
+
+    expect(result.candidate).toEqual({ candidate: 'c1', sdpMid: '0' });
+    expect(decryptGroupText).toHaveBeenCalledWith('sender2', expect.objectContaining({
+      ciphertext: 'gct2',
+      signal_message_type: 7,
+    }));
   });
 });

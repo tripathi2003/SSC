@@ -3,7 +3,13 @@
  * Fetches peer prekey bundle (contacts only) and runs libsignal SessionBuilder on-device.
  */
 import { api } from '../api';
-import { establishSignalSession, hasSignalSession, isNativeLibsignalAvailable } from './nativeLibsignal';
+import {
+  establishSignalSession,
+  hasSignalSession,
+  isNativeLibsignalAvailable,
+  resetPeerSignalState,
+  trustPeerIdentityFromBundle as nativeTrustPeerIdentity,
+} from './nativeLibsignal';
 
 const sessionPromises = new Map();
 
@@ -42,7 +48,7 @@ export async function ensureSignalSession(peerUserId, ourUserId, peerDeviceId = 
     if (!verify?.has_session) {
       console.warn('[SSC] Signal session may not have persisted for', peerUserId, '— will retry at first encrypt');
     }
-    return { ...result, has_session: verify?.has_session ?? result?.has_session ?? true };
+    return { ...result, has_session: !!(verify?.has_session ?? result?.has_session) };
   })();
 
   sessionPromises.set(sessionKey, work);
@@ -61,6 +67,19 @@ export async function ensureSignalSession(peerUserId, ourUserId, peerDeviceId = 
 export async function forceRefreshSignalSession(peerUserId, ourUserId, peerDeviceId = 1) {
   if (!peerUserId || !ourUserId) return;
   if (!isNativeLibsignalAvailable()) return;
+  await resetPeerSignalState(peerUserId, peerDeviceId).catch(() => {});
   const bundle = await fetchPeerPreKeyBundle(peerUserId, peerDeviceId);
-  await establishSignalSession(peerUserId, bundle, ourUserId);
+  await trustPeerIdentityFromBundle(peerUserId, bundle, peerDeviceId);
+  await establishSignalSession(peerUserId, bundle, ourUserId, { force: true, peerDeviceId });
+  const verify = await hasSignalSession(peerUserId, peerDeviceId);
+  if (!verify?.has_session) {
+    throw new Error(`signal session not ready after force refresh for ${peerUserId}:${peerDeviceId}`);
+  }
+}
+
+/** Save peer long-term identity from server bundle before decrypting inbound prekey messages. */
+export async function trustPeerIdentityFromBundle(peerUserId, bundle, peerDeviceId = 1) {
+  if (!peerUserId || !bundle?.identity_key_public) return { trusted: false, reason: 'no_bundle' };
+  if (!isNativeLibsignalAvailable()) return { trusted: false, reason: 'web' };
+  return nativeTrustPeerIdentity(peerUserId, bundle, peerDeviceId);
 }

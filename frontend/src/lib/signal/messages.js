@@ -13,13 +13,15 @@ import { ensureSignalSession, forceRefreshSignalSession } from './x3dh';
 
 /** Match the native-plugin "session not found" error family across Android and Electron. */
 function isSessionNotFoundError(err) {
-  const m = (err?.message || '').toLowerCase();
+  const m = (err?.message || String(err || '')).toLowerCase();
   return m.includes('session') && (
     m.includes('not found')
     || m.includes('no session')
     || m.includes('session record')
     || m.includes('message_encrypt')
     || m.includes('message_decrypt')
+    || m.includes('encrypt_message')
+    || m.includes('decrypt_message')
   );
 }
 
@@ -41,14 +43,25 @@ export async function canUseSignalMessaging(peerUserId, ourUserId, peerHasPrekey
 
 export async function encryptSignalText(peerUserId, ourUserId, plaintext, peerDeviceId = 1) {
   await ensureSignalSession(peerUserId, ourUserId, peerDeviceId);
-  try {
-    return await nativeEncrypt(peerUserId, ourUserId, plaintext ?? '', peerDeviceId);
-  } catch (err) {
-    if (!isSessionNotFoundError(err)) throw err;
-    console.warn('[SSC] encryptSignalText: session not found at encrypt time — forcing re-establish for', peerUserId, peerDeviceId);
-    await forceRefreshSignalSession(peerUserId, ourUserId, peerDeviceId);
-    return await nativeEncrypt(peerUserId, ourUserId, plaintext ?? '', peerDeviceId);
+  const MAX_SESSION_HEAL_ATTEMPTS = 2;
+  let lastErr = null;
+  for (let attempt = 0; attempt <= MAX_SESSION_HEAL_ATTEMPTS; attempt += 1) {
+    try {
+      return await nativeEncrypt(peerUserId, ourUserId, plaintext ?? '', peerDeviceId);
+    } catch (err) {
+      if (!isSessionNotFoundError(err)) throw err;
+      lastErr = err;
+      if (attempt >= MAX_SESSION_HEAL_ATTEMPTS) break;
+      console.warn(
+        '[SSC] encryptSignalText: session not found at encrypt time — forcing re-establish for',
+        peerUserId,
+        peerDeviceId,
+        err?.message || err,
+      );
+      await forceRefreshSignalSession(peerUserId, ourUserId, peerDeviceId);
+    }
   }
+  throw lastErr || new Error('signal encrypt failed after session heal');
 }
 
 export async function decryptSignalText(peerUserId, ourUserId, msg, peerDeviceId = 1) {

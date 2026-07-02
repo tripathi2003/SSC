@@ -93,23 +93,62 @@ export const libsignalHandlers = {
     return { has_session: !!session };
   },
 
-  async establishSession({ peer_user_id: peerUserId, our_user_id: ourUserId, bundle }) {
+  async establishSession({
+    peer_user_id: peerUserId,
+    our_user_id: ourUserId,
+    peer_device_id: peerDeviceId = 1,
+    bundle,
+    force = false,
+  }) {
     const s = requireStore();
     await s.ensureLocalKeys();
-    const peerDev = bundle?.device_id || 1;
+    const peerDev = bundle?.device_id || peerDeviceId || 1;
     const remote = ProtocolAddress.new(peerUserId, peerDev);
     const local = ProtocolAddress.new(ourUserId, s.getLocalDeviceId());
-    const hadSession = !!(await s.getSession(remote));
+    if (force) {
+      s.resetPeerSignalState(peerUserId, peerDev);
+    }
+    const hadSession = !force && !!(await s.getSession(remote));
     if (!hadSession) {
-      const preKeyBundle = buildPreKeyBundle(bundle);
-      await processPreKeyBundle(preKeyBundle, remote, local, s, s, new Date());
+      const runProcess = async () => {
+        const preKeyBundle = buildPreKeyBundle(bundle);
+        await processPreKeyBundle(preKeyBundle, remote, local, s, s, new Date());
+      };
+      try {
+        await runProcess();
+      } catch (err) {
+        const msg = (err?.message || String(err)).toLowerCase();
+        if (msg.includes('untrustedidentity') || msg.includes('untrusted identity')) {
+          s.resetPeerSignalState(peerUserId, peerDev);
+          const preKeyBundle = buildPreKeyBundle(bundle);
+          await s.saveIdentity(remote, preKeyBundle.identityKey());
+          await runProcess();
+        } else {
+          throw err;
+        }
+      }
     }
     return {
       peer_user_id: peerUserId,
       established: !hadSession,
       already_had_session: hadSession,
       has_session: !!(await s.getSession(remote)),
+      identity_rotated: false,
     };
+  },
+
+  async trustPeerIdentityFromBundle({
+    peer_user_id: peerUserId,
+    peer_device_id: peerDeviceId = 1,
+    bundle,
+  }) {
+    const s = requireStore();
+    await s.ensureLocalKeys();
+    const peerDev = bundle?.device_id || peerDeviceId || 1;
+    const remote = ProtocolAddress.new(peerUserId, peerDev);
+    const preKeyBundle = buildPreKeyBundle(bundle);
+    await s.saveIdentity(remote, preKeyBundle.identityKey());
+    return { trusted: true, peer_user_id: peerUserId, peer_device_id: peerDev };
   },
 
   async encryptSignalMessage({
@@ -149,16 +188,41 @@ export const libsignalHandlers = {
     const remote = ProtocolAddress.new(peerUserId, peerDeviceId || 1);
     const local = ProtocolAddress.new(ourUserId, s.getLocalDeviceId());
     const serialized = dec(ciphertext);
-    let plain;
-    if (messageType === CiphertextMessageType.PreKey) {
-      const msg = PreKeySignalMessage.deserialize(serialized);
-      plain = await signalDecryptPreKey(msg, remote, local, s, s, s, s, s);
-    } else if (messageType === CiphertextMessageType.Whisper) {
-      const msg = SignalMessage.deserialize(serialized);
-      plain = await signalDecrypt(msg, remote, local, s, s);
-    } else {
+    const errMsg = (err) => (err?.message || String(err)).toLowerCase();
+    const isUntrustedIdentityErr = (err) => {
+      const m = errMsg(err);
+      return m.includes('untrustedidentity') || m.includes('untrusted identity');
+    };
+    const isSessionNotFoundErr = (err) => {
+      const m = errMsg(err);
+      return m.includes('session') && (m.includes('not found') || m.includes('no session'));
+    };
+    const decryptOnce = async () => {
+      if (messageType === CiphertextMessageType.PreKey) {
+        const msg = PreKeySignalMessage.deserialize(serialized);
+        return { plain: await signalDecryptPreKey(msg, remote, local, s, s, s, s, s), preKeyMsg: msg };
+      }
+      if (messageType === CiphertextMessageType.Whisper) {
+        const msg = SignalMessage.deserialize(serialized);
+        return { plain: await signalDecrypt(msg, remote, local, s, s), preKeyMsg: null };
+      }
       throw new Error(`unsupported signal_message_type: ${messageType}`);
+    };
+    let result;
+    try {
+      result = await decryptOnce();
+    } catch (err) {
+      if (isUntrustedIdentityErr(err)) {
+        s.resetPeerSignalState(peerUserId, peerDeviceId || 1);
+        throw err;
+      } else if (isSessionNotFoundErr(err)) {
+        s.resetPeerSignalState(peerUserId, peerDeviceId || 1);
+        result = await decryptOnce();
+      } else {
+        throw err;
+      }
     }
+    const plain = result.plain;
     return { plaintext: new TextDecoder().decode(plain) };
   },
 
@@ -217,6 +281,13 @@ export const libsignalHandlers = {
     const s = requireStore();
     s.deleteSession(peerUserId);
     return { deleted: true };
+  },
+
+  async resetPeerSignalState({ peer_user_id: peerUserId, peer_device_id: peerDeviceId = 1 }) {
+    if (!peerUserId) throw new Error('peer_user_id required');
+    const s = requireStore();
+    s.resetPeerSignalState(peerUserId, peerDeviceId);
+    return { reset: true };
   },
 
   async clearAllSessions() {

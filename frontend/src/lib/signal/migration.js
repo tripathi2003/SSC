@@ -24,6 +24,7 @@ import {
 } from './sealedSender';
 import { isNativeLibsignalAvailable } from './nativeLibsignal';
 import { usesSignalOnlyMessaging } from './installedOnly';
+import { normalizeDecryptError } from '../decryptErrors';
 import {
   cacheReceivedPlaintext,
   getReceivedPlaintext,
@@ -38,8 +39,27 @@ export function isLegacyRsaMessage(msg) {
   return getMessageProtocol(msg) === ProtocolVersion.LEGACY_RSA;
 }
 
+const decryptInFlight = new Map();
+
 /** Unified dual-read decrypt — legacy_rsa (vault) or signal_v1 (native store). */
 export async function decryptMessageBody(msg, { myUserId, peerUserId, privateKey }) {
+  const messageId = msg?.message_id;
+  if (messageId && decryptInFlight.has(messageId)) {
+    return decryptInFlight.get(messageId);
+  }
+  const work = decryptMessageBodyInner(msg, { myUserId, peerUserId, privateKey });
+  if (messageId) {
+    decryptInFlight.set(messageId, work);
+    try {
+      return await work;
+    } finally {
+      decryptInFlight.delete(messageId);
+    }
+  }
+  return work;
+}
+
+async function decryptMessageBodyInner(msg, { myUserId, peerUserId, privateKey }) {
   if (msg?.message_id) {
     const cached = getReceivedPlaintext(msg.message_id);
     if (cached != null) return cached;
@@ -49,7 +69,7 @@ export async function decryptMessageBody(msg, { myUserId, peerUserId, privateKey
   }
   const remember = (plaintext) => {
     if (msg?.message_id && plaintext != null) {
-      cacheReceivedPlaintext(msg.message_id, plaintext);
+      cacheReceivedPlaintext(msg.message_id, plaintext, msg.expires_at);
     }
     return plaintext;
   };
@@ -97,7 +117,8 @@ export async function decryptMessageBody(msg, { myUserId, peerUserId, privateKey
       const cached = getReceivedPlaintext(msg.message_id);
       if (cached != null) return cached;
     }
-    throw err;
+    const code = normalizeDecryptError(err, msg);
+    throw new Error(code);
   }
 }
 

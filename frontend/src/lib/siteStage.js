@@ -13,6 +13,30 @@ export function getPublicAppVersion() {
 /** @type {SiteUpdateEntry[]} */
 export const PUBLIC_SITE_UPDATES = [
   {
+    id: '2026-07-02-v1024-ingest-store',
+    date: '2026-07-02',
+    titleKey: 'siteUpdateV1024IngestStoreTitle',
+    bodyKey: 'siteUpdateV1024IngestStoreBody',
+  },
+  {
+    id: '2026-07-02-v1023-received-text-fix',
+    date: '2026-07-02',
+    titleKey: 'siteUpdateV1023ReceivedTextFixTitle',
+    bodyKey: 'siteUpdateV1023ReceivedTextFixBody',
+  },
+  {
+    id: '2026-07-02-v1022-messaging-fix',
+    date: '2026-07-02',
+    titleKey: 'siteUpdateV1022MessagingFixTitle',
+    bodyKey: 'siteUpdateV1022MessagingFixBody',
+  },
+  {
+    id: '2026-07-02-v1021-telemetry',
+    date: '2026-07-02',
+    titleKey: 'siteUpdateV1021TelemetryTitle',
+    bodyKey: 'siteUpdateV1021TelemetryBody',
+  },
+  {
     id: '2026-07-02-v1020-messaging',
     date: '2026-07-02',
     titleKey: 'siteUpdateV1020MessagingTitle',

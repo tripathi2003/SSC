@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { visibleConversations } from '../lib/contactFilters';
-import { isMessageDeleted } from '../lib/messageDelete';
-import { decryptMessageBody } from '../lib/signal/migration';
 import {
   GLOBAL_SEARCH_CONCURRENCY,
   MIN_GLOBAL_SEARCH_LENGTH,
@@ -11,23 +9,10 @@ import {
   mergeGlobalSearchResults,
   searchGlobalInConversation,
 } from '../lib/globalMessageSearch';
-
-async function decryptMessagesForSearch(messages, { myUserId, peerUserId, privateKey }) {
-  const bodies = {};
-  for (const msg of messages) {
-    if (isMessageDeleted(msg)) continue;
-    try {
-      bodies[msg.message_id] = await decryptMessageBody(msg, {
-        myUserId,
-        peerUserId,
-        privateKey,
-      });
-    } catch {
-      /* skip undecryptable */
-    }
-  }
-  return bodies;
-}
+import {
+  buildDecryptedBodiesMap,
+  ingestMessagesPlaintext,
+} from '../lib/messageIngest';
 
 const CACHE_TTL_MS = 120_000;
 
@@ -71,11 +56,12 @@ export function useGlobalMessageSearch({
             } else {
               const { data } = await api.get(`/conversations/${convId}/messages`);
               messages = filterVisibleChatMessages(data);
-              bodies = await decryptMessagesForSearch(messages, {
+              await ingestMessagesPlaintext(messages, {
                 myUserId: user.user_id,
                 peerUserId: conversation.is_group ? null : conversation.peer?.user_id,
                 privateKey,
               });
+              bodies = buildDecryptedBodiesMap(messages, user.user_id);
               cacheRef.current[convId] = { messages, bodies, fetchedAt: Date.now() };
             }
             return searchGlobalInConversation({

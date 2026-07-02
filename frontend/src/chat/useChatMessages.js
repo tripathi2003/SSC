@@ -2,11 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { SKDM_MESSAGE_TYPE } from '../lib/signal/constants';
 import { STATUS_SKDM_MESSAGE_TYPE, processIncomingStatusSkdmMessage } from '../lib/signal/statuses';
-import { decryptMessageBody } from '../lib/signal/migration';
 import { processIncomingSkdmMessage } from '../lib/signal/groupMessages';
 import { readReceiptsEnabled } from '../lib/privacySettings';
 import { isMessageDeleted } from '../lib/messageDelete';
 import { filterMessagesForSearch, searchMatchIds } from '../lib/chatSearch';
+import {
+  buildDecryptedBodiesMap,
+  ingestMessagesPlaintext,
+} from '../lib/messageIngest';
+import { subscribeMessagePlaintext } from '../lib/messagePlaintextStore';
 
 export function useChatMessages({
   activeId,
@@ -23,30 +27,38 @@ export function useChatMessages({
   const [decryptedBodies, setDecryptedBodies] = useState({});
   const [messageFilter, setMessageFilter] = useState('');
   const userNearBottomRef = useRef(true);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  const ingestCtx = useMemo(
+    () => ({
+      myUserId: user?.user_id,
+      peerUserId: peer?.user_id,
+      privateKey,
+    }),
+    [user?.user_id, peer?.user_id, privateKey],
+  );
 
   useEffect(() => {
-    if (!user?.user_id || messages.length === 0) return;
+    if (!user?.user_id || messages.length === 0) {
+      setDecryptedBodies({});
+      return undefined;
+    }
     let cancelled = false;
-    (async () => {
-      const next = {};
-      for (const m of messages) {
-        if (isMessageDeleted(m)) continue;
-        try {
-          next[m.message_id] = await decryptMessageBody(m, {
-            myUserId: user.user_id,
-            peerUserId: peer?.user_id,
-            privateKey,
-          });
-        } catch {
-          /* skip undecryptable */
-        }
-      }
+    ingestMessagesPlaintext(messages, ingestCtx).then(() => {
       if (!cancelled) {
-        setDecryptedBodies((prev) => ({ ...prev, ...next }));
+        setDecryptedBodies(buildDecryptedBodiesMap(messages, user.user_id));
       }
-    })();
+    });
     return () => { cancelled = true; };
-  }, [messages, privateKey, user?.user_id, peer?.user_id]);
+  }, [messages, ingestCtx, user?.user_id]);
+
+  useEffect(() => {
+    if (!user?.user_id) return undefined;
+    return subscribeMessagePlaintext(() => {
+      setDecryptedBodies(buildDecryptedBodiesMap(messagesRef.current, user.user_id));
+    });
+  }, [user?.user_id]);
 
   const searchContext = useMemo(
     () => ({ user, peer, isGroup, activeConv }),

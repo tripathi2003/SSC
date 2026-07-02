@@ -15,8 +15,11 @@ import {
 import { SKDM_MESSAGE_TYPE } from '../lib/signal/constants';
 import { STATUS_SKDM_MESSAGE_TYPE, processIncomingStatusSkdmMessage } from '../lib/signal/statuses';
 import { handlePeerIdentityRotation } from '../lib/keyChangeWarnings';
-import { deleteSignalSession } from '../lib/signal/nativeLibsignal';
+import { resetPeerSignalState } from '../lib/signal/nativeLibsignal';
+import { fetchPeerPreKeyBundle, trustPeerIdentityFromBundle } from '../lib/signal/x3dh';
+import { setTrustedIdentityFingerprint } from '../lib/keyChangeWarnings';
 import { resolveIncomingSignaling, SignalingInboundError } from './signalingInbound';
+import { toastCallSignalingDecryptFailedOnce } from '../lib/callSignalingToastGuard';
 import { toastServerSignalingError } from './signalingErrors';
 import {
   handleIncomingCallOffer,
@@ -29,6 +32,7 @@ import { applyMessageEdited } from '../lib/messageEdit';
 import { applyMessageReactionUpdate } from '../lib/messageReactions';
 import { applyPollVoteUpdate } from '../lib/pollMessage';
 import { messageBelongsToTopic } from '../lib/groupTopics';
+import { ingestMessagePlaintext } from '../lib/messageIngest';
 
 export function useChatSocket({
   user,
@@ -68,11 +72,24 @@ export function useChatSocket({
             }).catch((err) => {
               console.warn('[SSC] incoming status SKDM failed:', err?.message || err);
             });
-          } else if (
-            incoming.conversation_id === activeId
-            && messageBelongsToTopic(incoming, activeTopicIdRef?.current)
-          ) {
-            setMessages((m) => [...m, incoming]);
+          } else {
+            ingestMessagePlaintext(incoming, {
+              myUserId: user.user_id,
+              peerUserId: incoming.sender_id !== user.user_id
+                ? incoming.sender_id
+                : peer?.user_id,
+            }).catch(() => {});
+            if (
+              incoming.conversation_id === activeId
+              && messageBelongsToTopic(incoming, activeTopicIdRef?.current)
+            ) {
+              setMessages((m) => {
+                if (incoming?.message_id && m.some((row) => row.message_id === incoming.message_id)) {
+                  return m;
+                }
+                return [...m, incoming];
+              });
+            }
           }
           loadConversations();
           maybeNotifyDesktopMessage(incoming, {
@@ -145,10 +162,22 @@ export function useChatSocket({
         } else if (data.type === 'status-new') {
           window.dispatchEvent(new Event('ssc-status-new'));
         } else if (data.type === 'identity-changed' && data.user_id) {
-          deleteSignalSession(data.user_id).catch((err) => {
-            console.warn('[SSC] deleteSignalSession after identity-changed failed:', err?.message || err);
+          const rotatedPeerId = data.user_id;
+          resetPeerSignalState(rotatedPeerId).catch((err) => {
+            console.warn('[SSC] resetPeerSignalState after identity-changed failed:', err?.message || err);
           });
-          handlePeerIdentityRotation(data.user_id);
+          (async () => {
+            try {
+              const bundle = await fetchPeerPreKeyBundle(rotatedPeerId, 1);
+              await trustPeerIdentityFromBundle(rotatedPeerId, bundle, 1);
+            } catch (err) {
+              console.warn('[SSC] trust peer identity after rotation failed:', err?.message || err);
+            }
+          })();
+          if (data.identity_key_public) {
+            setTrustedIdentityFingerprint(rotatedPeerId, `signal:${data.identity_key_public}`);
+          }
+          handlePeerIdentityRotation(rotatedPeerId);
           loadConversations();
           if (data.user_id === peer?.user_id) {
             toast.warning(t('keyChangeWarningToast'));
@@ -175,7 +204,7 @@ export function useChatSocket({
               if (!resolved.ok) {
                 if (resolved.encrypted || resolved.error === SignalingInboundError.CLEARTEXT_REJECTED) {
                   console.warn('[SSC] call signaling unpack failed:', resolved.error);
-                  toast.error(t('callSignalingDecryptFailed'));
+                  toastCallSignalingDecryptFailedOnce(data.from, toast, t);
                 }
                 return;
               }

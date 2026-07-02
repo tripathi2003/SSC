@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '../context/LocaleContext';
 import { Translate, Paperclip, Check, Checks, DownloadSimple } from '@phosphor-icons/react';
-import { decryptMessageBody } from '../lib/signal/migration';
+import { retryIngestMessagePlaintext } from '../lib/messageIngest';
+import { getMessagePlaintextEntry, subscribeMessagePlaintext } from '../lib/messagePlaintextStore';
 import { isSignalV1Message } from '../lib/signal/messages';
 import { isSignalV1AttachmentMessage } from '../lib/signal/attachments';
 import { translateMessageText } from '../lib/translation/translateClient';
@@ -23,7 +24,7 @@ import LocationMessage from './LocationMessage';
 import { recordDiagnostic } from '../lib/diagnosticLog';
 import { subscribeMemoryWipe } from '../lib/memoryWipe';
 import { getSentPlaintext } from '../lib/sentPlaintextCache';
-import { getReceivedPlaintext } from '../lib/receivedPlaintextCache';
+
 
 function HighlightedText({ text, query }) {
   const parts = splitTextForHighlight(text, query);
@@ -64,6 +65,7 @@ export default function Message({
   const [vaultLocked, setVaultLocked] = useState(false);
   const [decrypting, setDecrypting] = useState(true);
   const [decryptAttempt, setDecryptAttempt] = useState(0);
+  const plaintextRef = useRef(null);
   const { t } = useLocale();
   const deleted = isMessageDeleted(msg);
   const reactionGroups = useMemo(
@@ -75,13 +77,18 @@ export default function Message({
     return extractFirstPreviewUrl(plaintext);
   }, [deleted, msg.message_type, plaintext]);
 
+  useEffect(() => {
+    plaintextRef.current = plaintext;
+  }, [plaintext]);
+
   const retryDecrypt = useCallback(() => {
     setError(null);
     setVaultLocked(false);
     setPlaintext(null);
     setDecrypting(true);
     setDecryptAttempt((n) => n + 1);
-  }, []);
+    retryIngestMessagePlaintext(msg, { myUserId, peerUserId, privateKey }).catch(() => {});
+  }, [msg, myUserId, peerUserId, privateKey]);
 
   useEffect(() => subscribeMemoryWipe(() => {
     setPlaintext(null);
@@ -100,67 +107,84 @@ export default function Message({
       setDecrypting(false);
       return undefined;
     }
-    const inboundCached = getReceivedPlaintext(msg.message_id);
-    if (inboundCached != null) {
-      setPlaintext(inboundCached);
-      setError(null);
-      setVaultLocked(false);
-      setDecrypting(false);
-      return undefined;
-    }
-    if (isMine && isSignalV1Message(msg)) {
-      const cached = getSentPlaintext(msg.message_id, msg.ciphertext);
-      setPlaintext(cached);
-      setError(null);
-      setVaultLocked(false);
-      setDecrypting(false);
-      return undefined;
-    }
-    let mounted = true;
-    setDecrypting(true);
-    const slowTimer = setTimeout(() => {
-      if (mounted) setError((prev) => (prev ? prev : 'DECRYPT_SLOW'));
-    }, 8000);
-    (async () => {
-      try {
-        const pt = await decryptMessageBody(msg, { myUserId, peerUserId, privateKey });
-        if (mounted) {
-          setPlaintext(pt);
-          setError(null);
-          setVaultLocked(false);
-          setDecrypting(false);
-        }
-      } catch (e) {
-        if (!mounted) return;
+
+    const applyFromStore = () => {
+      const entry = getMessagePlaintextEntry(msg.message_id);
+      if (entry?.plaintext != null) {
+        setPlaintext(entry.plaintext);
+        setError(null);
+        setVaultLocked(false);
         setDecrypting(false);
-        const code = e?.message;
+        return 'ready';
+      }
+      if (isMine && isSignalV1Message(msg)) {
+        const cached = getSentPlaintext(msg.message_id, msg.ciphertext);
+        setPlaintext(cached);
+        setError(null);
+        setVaultLocked(false);
+        setDecrypting(false);
+        return 'ready';
+      }
+      if (entry?.error) {
+        setDecrypting(false);
+        setVaultLocked(false);
+        const code = entry.error;
         if (code === 'VAULT_LOCKED') {
           setPlaintext(null);
           setError(null);
           setVaultLocked(true);
-          return;
+          return 'vault';
         }
-        setVaultLocked(false);
+        const prior = plaintextRef.current;
+        if (prior != null && prior !== '') {
+          setPlaintext(prior);
+          setError(null);
+          return 'prior';
+        }
         if (code === 'NO_KEY') setError('NO_KEY');
+        else if (code === 'DECRYPT_STALE') setError('DECRYPT_STALE');
         else setError('DECRYPT_FAIL');
-        recordDiagnostic({
-          category: 'libsignal',
-          source: 'Message.decrypt',
-          message: code || 'DECRYPT_FAIL',
-          detail: {
-            message_id: msg?.message_id,
-            conversation_id: msg?.conversation_id,
-            protocol: msg?.protocol,
-            signal_message_type: msg?.signal_message_type,
-          },
-        });
+        if (code !== 'DECRYPT_STALE') {
+          recordDiagnostic({
+            category: 'libsignal',
+            source: 'Message.display',
+            message: code,
+            detail: {
+              message_id: msg?.message_id,
+              conversation_id: msg?.conversation_id,
+              protocol: msg?.protocol,
+              signal_message_type: msg?.signal_message_type,
+            },
+          });
+        }
+        return 'error';
       }
-    })();
-    return () => {
-      mounted = false;
-      clearTimeout(slowTimer);
+      setDecrypting(true);
+      setError(null);
+      setVaultLocked(false);
+      return 'pending';
     };
-  }, [msg, myUserId, privateKey, peerUserId, decryptAttempt, deleted, isMine]);
+
+    applyFromStore();
+
+    const slowTimer = setTimeout(() => {
+      setError((prev) => (prev ? prev : 'DECRYPT_SLOW'));
+    }, 8000);
+
+    const unsub = subscribeMessagePlaintext((id) => {
+      if (id == null || id === msg.message_id) {
+        const next = applyFromStore();
+        if (next === 'ready' || next === 'prior') {
+          setError(null);
+        }
+      }
+    });
+
+    return () => {
+      clearTimeout(slowTimer);
+      unsub();
+    };
+  }, [msg.message_id, msg.ciphertext, msg.conversation_id, msg.protocol, msg.signal_message_type, myUserId, peerUserId, decryptAttempt, deleted, isMine]);
 
   const sameLanguage = Boolean(
     sourceLang && targetLang && sourceLang.toLowerCase() === targetLang.toLowerCase(),
@@ -246,6 +270,11 @@ export default function Message({
             </div>
             <div className="text-[#A1A1AA] truncate mt-0.5">{quotedPreview.preview}</div>
           </div>
+        )}
+        {!deleted && error === 'DECRYPT_STALE' && (
+          <span className="text-xs text-[#A1A1AA] italic" data-testid={`message-stale-${msg.message_id}`}>
+            {t('messageDecryptStale')}
+          </span>
         )}
         {!deleted && error === 'DECRYPT_FAIL' && (
           <span className="text-xs text-[#FF3B30]">

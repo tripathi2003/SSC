@@ -1,7 +1,7 @@
 {
   "matrix_id": "Q.64",
   "minimum_wave": "Q.15",
-  "release_candidate_version": "1.0.12",
+  "release_candidate_version": "1.0.26",
   "api_url": "https://api.supersecurechat.com",
   "primary_devices": [
     {

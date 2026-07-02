@@ -2,7 +2,7 @@
 
 SSC is **install-only** (Android APK + Windows/Mac desktop). Browser-tab chat is intentionally blocked. See `InstalledClientGate.jsx`.
 
-## Public beta testing (Android v1.0.17 · Windows v1.0.18)
+## Public beta testing (Android v1.0.26 · Windows v1.0.26)
 
 SSC is in **pre-release testing**, not a finished product.
 
@@ -59,6 +59,7 @@ All automated tests live under **`backend/tests/`** (there is no separate top-le
 ## Before you PR
 - No secrets, personal emails, or home LAN IPs in the diff
 - Match existing code style; small PRs are easier to review
+- For release/version updates, run `.\scripts\sync_release_version.ps1` (or `-DryRun`) to sync `.env.production.local` and release docs.
 
 ## License
 

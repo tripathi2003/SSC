@@ -268,8 +268,7 @@ public class SscLibsignalPlugin extends Plugin {
             CiphertextMessage encrypted = cipher.encrypt(plaintext.getBytes(StandardCharsets.UTF_8));
 
             int peerDev = peerDeviceId(call);
-            store.persistSessions();
-            store.trackSessionPeer(peerUserId, peerDev);
+            store.persistSessionsWithPeer(peerUserId, peerDev);
 
             JSObject ret = new JSObject();
             ret.put("protocol", "signal_v1");
@@ -323,8 +322,7 @@ public class SscLibsignalPlugin extends Plugin {
                 return;
             }
 
-            store.persistSessions();
-            store.trackSessionPeer(peerUserId, peerDev);
+            store.persistSessionsWithPeer(peerUserId, peerDev);
 
             JSObject ret = new JSObject();
             ret.put("plaintext", new String(plaintextBytes, StandardCharsets.UTF_8));

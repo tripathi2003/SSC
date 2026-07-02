@@ -51,10 +51,11 @@ export async function decryptSignalTextForLocalDevice(msg, peerUserId, ourUserId
   if (!slice?.ciphertext) {
     throw new Error('no ciphertext for this device');
   }
+  const senderDeviceId = msg?.sender_device_id || 1;
   return decryptSignalText(
     peerUserId,
     ourUserId,
     { ...msg, ...slice },
-    deviceId,
+    senderDeviceId,
   );
 }

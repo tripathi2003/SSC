@@ -9,6 +9,7 @@ import {
   isNativeLibsignalAvailable,
   setNativeLocalDeviceId,
 } from './nativeLibsignal';
+import { recordDiagnostic } from '../diagnosticLog';
 
 let uploadPromise = null;
 
@@ -58,8 +59,12 @@ export async function ensurePreKeysUploaded() {
   uploadPromise = (async () => {
     try {
       const deviceId = getLocalDeviceId();
-      await setNativeLocalDeviceId(deviceId).catch(() => {});
-      await registerLocalDevice().catch(() => {});
+      await setNativeLocalDeviceId(deviceId).catch((err) => {
+        recordDiagnostic({ category: 'libsignal', source: 'prekeys/setNativeLocalDeviceId', message: err?.message || 'setNativeLocalDeviceId failed', detail: err });
+      });
+      await registerLocalDevice().catch((err) => {
+        recordDiagnostic({ category: 'libsignal', source: 'prekeys/registerLocalDevice', message: err?.message || 'registerLocalDevice failed', detail: err });
+      });
       const status = await fetchMyPreKeyStatus(deviceId);
       const localBundle = await generatePreKeyBundle();
       if (localBundle && !localBundle.device_id) {

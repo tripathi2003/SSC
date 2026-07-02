@@ -18,6 +18,7 @@ import {
   setMessagePlaintextSuccess,
   trackIngestInFlight,
 } from './messagePlaintextStore';
+import { recordDiagnostic } from './diagnosticLog';
 
 /**
  * Sealed-sender messages omit sender_id on the wire (null). Never use
@@ -91,7 +92,9 @@ export async function ingestMessagePlaintext(msg, ctx) {
   const work = (async () => {
     try {
       if (isSignalV1Message(msg) && peerUserId && myUserId) {
-        await ensureSignalSession(peerUserId, myUserId).catch(() => {});
+        await ensureSignalSession(peerUserId, myUserId).catch((err) => {
+          recordDiagnostic({ category: 'libsignal', source: 'messageIngest/ensureSession', message: err?.message || 'ensureSignalSession failed', detail: err });
+        });
       }
       const plaintext = await decryptMessageBody(msg, { myUserId, peerUserId, privateKey });
       setMessagePlaintextSuccess(messageId, plaintext, msg.expires_at);
@@ -110,7 +113,9 @@ export async function ingestMessagePlaintext(msg, ctx) {
 export async function ingestMessagesPlaintext(messages, ctx) {
   if (!Array.isArray(messages) || messages.length === 0) return;
   for (const msg of messages) {
-    await ingestMessagePlaintext(msg, ctx).catch(() => {});
+    await ingestMessagePlaintext(msg, ctx).catch((err) => {
+      recordDiagnostic({ category: 'messaging', source: 'messageIngest/batchIngest', message: err?.message || 'batch ingest item failed', detail: err });
+    });
   }
 }
 

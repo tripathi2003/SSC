@@ -5,6 +5,7 @@ import { api, API } from './api';
 import { openOAuthUrl } from './oauthBrowser';
 import { isElectronApp, isNativeApp } from './platform';
 import { bootstrapSessionFromDevice, getSessionToken } from './sessionStore';
+import { recordDiagnostic } from './diagnosticLog';
 
 export async function fetchGoogleConfig() {
   try {
@@ -28,7 +29,9 @@ export async function completeGoogleAuth(
   }
   navigate('/chat', { replace: true });
   if (refreshUser) {
-    refreshUser().catch(() => {});
+    refreshUser().catch((err) => {
+      recordDiagnostic({ category: 'bootstrap', source: 'google-auth/refreshUser', message: err?.message || 'refreshUser after Google auth failed', detail: err });
+    });
   }
 }
 

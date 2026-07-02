@@ -10,6 +10,7 @@ import {
   resetPeerSignalState,
   trustPeerIdentityFromBundle as nativeTrustPeerIdentity,
 } from './nativeLibsignal';
+import { recordDiagnostic } from '../diagnosticLog';
 
 const sessionPromises = new Map();
 
@@ -67,7 +68,9 @@ export async function ensureSignalSession(peerUserId, ourUserId, peerDeviceId = 
 export async function forceRefreshSignalSession(peerUserId, ourUserId, peerDeviceId = 1) {
   if (!peerUserId || !ourUserId) return;
   if (!isNativeLibsignalAvailable()) return;
-  await resetPeerSignalState(peerUserId, peerDeviceId).catch(() => {});
+  await resetPeerSignalState(peerUserId, peerDeviceId).catch((err) => {
+    recordDiagnostic({ category: 'libsignal', source: 'x3dh/forceRefresh/resetPeerState', message: err?.message || 'resetPeerSignalState failed', detail: err });
+  });
   const bundle = await fetchPeerPreKeyBundle(peerUserId, peerDeviceId);
   await trustPeerIdentityFromBundle(peerUserId, bundle, peerDeviceId);
   await establishSignalSession(peerUserId, bundle, ourUserId, { force: true, peerDeviceId });

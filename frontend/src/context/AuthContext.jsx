@@ -26,6 +26,7 @@ import { purgeLegacyVerificationFlags } from '../lib/verification';
 import { ensurePreKeysUploaded } from '../lib/signal/prekeys';
 import { bootstrapSignalIdentity } from '../lib/signalIdentityBootstrap';
 import { isInstalledClient } from '../lib/platform';
+import { recordDiagnostic } from '../lib/diagnosticLog';
 import {
   saveVaultCredential,
   loadVaultCredential,
@@ -99,7 +100,9 @@ export function AuthProvider({ children }) {
       syncPrekeysOnInstalledClient().catch((err) => {
         console.error('[SSC] background prekey sync failed:', err?.message || err);
       });
-      tryAutoUnlockVault(data).catch(() => {});
+      tryAutoUnlockVault(data).catch((err) => {
+        recordDiagnostic({ category: 'bootstrap', source: 'AuthContext/refreshUser', message: err?.message || 'vault auto-unlock failed', detail: err });
+      });
       return data;
     } catch (err) {
       if (generation !== authGeneration.current) return null;
@@ -113,7 +116,9 @@ export function AuthProvider({ children }) {
             syncPrekeysOnInstalledClient().catch((e) => {
               console.error('[SSC] background prekey sync failed:', e?.message || e);
             });
-            tryAutoUnlockVault(data).catch(() => {});
+            tryAutoUnlockVault(data).catch((err2) => {
+              recordDiagnostic({ category: 'bootstrap', source: 'AuthContext/refreshUser/retry', message: err2?.message || 'vault auto-unlock failed after retry', detail: err2 });
+            });
             return data;
           } catch {
             /* fall through */
@@ -174,7 +179,9 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!user?.encrypted_private_key || privateKey) return;
-    tryAutoUnlockVault(user, { force: true }).catch(() => {});
+    tryAutoUnlockVault(user, { force: true }).catch((err) => {
+      recordDiagnostic({ category: 'bootstrap', source: 'AuthContext/vaultForceUnlock', message: err?.message || 'vault force unlock failed', detail: err });
+    });
   }, [user, privateKey, tryAutoUnlockVault]);
 
   useEffect(() => {

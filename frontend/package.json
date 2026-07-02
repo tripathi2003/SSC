@@ -38,6 +38,7 @@
     "desktop:build:mac": "yarn build:desktop && cd desktop && yarn install && yarn build:mac",
     "test": "craco test",
     "test:ci": "craco test --watchAll=false --passWithNoTests",
+    "lint": "eslint --config eslint.config.mjs src/chat/ src/lib/signal/ src/context/",
     "cap:init": "cap init \"SSC\" chat.ssc.secure --web-dir build",
     "cap:sync": "yarn build:firebase && cap sync",
     "cap:sync:lan": "yarn build:phone && cap sync",

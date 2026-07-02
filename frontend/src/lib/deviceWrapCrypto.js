@@ -78,6 +78,7 @@ export async function migrateDeviceWrapKeyToHardware() {
     if (!isNativeApp()) {
       localStorage.removeItem(DEVICE_WRAP_KEY);
     } else {
+      // codeql[js/clear-text-storage-of-sensitive-information]: AES wrap key backup for Android Keystore cold-start (#53)
       localStorage.setItem(DEVICE_WRAP_KEY, existing);
     }
     return true;
@@ -96,6 +97,7 @@ async function writeWrapKeyMaterial(material) {
       if (verified === material && typeof localStorage !== 'undefined') {
         // Android Keystore can lag on cold start — keep localStorage fallback on native.
         if (isNativeApp()) {
+          // codeql[js/clear-text-storage-of-sensitive-information]: AES wrap key backup for Android Keystore cold-start (#53)
           localStorage.setItem(DEVICE_WRAP_KEY, material);
         } else {
           localStorage.removeItem(DEVICE_WRAP_KEY);

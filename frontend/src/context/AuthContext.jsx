@@ -49,14 +49,10 @@ function notifyEncryptionBootstrapFailure(result) {
   toast.error(t(key, lang));
 }
 
-async function syncPrekeysOnInstalledClient({
-  notify = false,
-  force = false,
-  serverPrekeysReady,
-} = {}) {
+async function syncPrekeysOnInstalledClient({ notify = false } = {}) {
   if (!isInstalledClient()) return { ok: true, skipped: true };
   try {
-    const result = await ensurePreKeysUploaded({ force, serverPrekeysReady });
+    const result = await ensurePreKeysUploaded();
     if (result?.skipped && result?.reason === 'web') {
       const failure = { ok: false, reason: 'libsignal_unavailable' };
       if (notify) notifyEncryptionBootstrapFailure(failure);
@@ -100,12 +96,7 @@ export function AuthProvider({ children }) {
       const { data } = await api.get('/auth/me');
       if (generation !== authGeneration.current) return data;
       setUser(data);
-      const needsPrekeys = data?.signal_prekeys_ready === false;
-      syncPrekeysOnInstalledClient({
-        force: needsPrekeys,
-        serverPrekeysReady: data?.signal_prekeys_ready,
-        notify: needsPrekeys,
-      }).catch((err) => {
+      syncPrekeysOnInstalledClient().catch((err) => {
         console.error('[SSC] background prekey sync failed:', err?.message || err);
       });
       tryAutoUnlockVault(data).catch(() => {});
@@ -119,12 +110,7 @@ export function AuthProvider({ children }) {
             const { data } = await api.get('/auth/me');
             if (generation !== authGeneration.current) return data;
             setUser(data);
-            const needsPrekeys = data?.signal_prekeys_ready === false;
-            syncPrekeysOnInstalledClient({
-              force: needsPrekeys,
-              serverPrekeysReady: data?.signal_prekeys_ready,
-              notify: needsPrekeys,
-            }).catch((e) => {
+            syncPrekeysOnInstalledClient().catch((e) => {
               console.error('[SSC] background prekey sync failed:', e?.message || e);
             });
             tryAutoUnlockVault(data).catch(() => {});
@@ -144,13 +130,9 @@ export function AuthProvider({ children }) {
     }
   }, [tryAutoUnlockVault]);
 
-  const runSilentBootstrap = useCallback(async ({ forcePrekeys = false, serverPrekeysReady } = {}) => {
+  const runSilentBootstrap = useCallback(async () => {
     if (!isInstalledClient()) return { ok: true, skipped: true };
-    const pre = await syncPrekeysOnInstalledClient({
-      notify: true,
-      force: forcePrekeys,
-      serverPrekeysReady,
-    });
+    const pre = await syncPrekeysOnInstalledClient({ notify: true });
     if (!pre?.ok) return pre;
     const boot = await bootstrapSignalIdentity(refreshUser);
     if (!boot?.ok) {
@@ -182,12 +164,8 @@ export function AuthProvider({ children }) {
       await bootstrapSessionFromDevice();
       const data = await refreshUser();
       setLoading(false);
-      if (data?.username && data?.public_key) {
-        const needsPrekeys = data.signal_prekeys_ready === false;
-        runSilentBootstrap({
-          forcePrekeys: needsPrekeys,
-          serverPrekeysReady: data.signal_prekeys_ready,
-        }).catch((err) => {
+      if (data) {
+        runSilentBootstrap().catch((err) => {
           console.error('[SSC] background bootstrap failed:', err?.message || err);
         });
       }
@@ -219,13 +197,9 @@ export function AuthProvider({ children }) {
     setLoading(false);
     autoUnlockAttempted.current = null;
     void tryAutoUnlockVault(userObj);
-    if (isInstalledClient() && userObj?.username && userObj?.public_key) {
-      const needsPrekeys = userObj.signal_prekeys_ready === false;
+    if (isInstalledClient()) {
       void (async () => {
-        const boot = await runSilentBootstrap({
-          forcePrekeys: needsPrekeys,
-          serverPrekeysReady: userObj.signal_prekeys_ready,
-        });
+        const boot = await runSilentBootstrap();
         if (!boot?.ok) {
           notifyEncryptionBootstrapFailure(boot);
         }

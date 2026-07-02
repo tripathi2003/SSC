@@ -1,21 +1,15 @@
 /**
  * Double Ratchet messaging — Engine 8.5 (signal_v1).
  */
-import { ProtocolVersion, SignalMessageType } from './constants';
+import { ProtocolVersion } from './constants';
 import {
   decryptSignalMessage as nativeDecrypt,
   encryptSignalMessage as nativeEncrypt,
   hasSignalSession,
   isNativeLibsignalAvailable,
-  resetPeerSignalState,
 } from './nativeLibsignal';
-import { getResolvedSenderId } from './senderResolve';
-import {
-  ensureSignalSession,
-  fetchPeerPreKeyBundle,
-  forceRefreshSignalSession,
-  trustPeerIdentityFromBundle,
-} from './x3dh';
+import { getResolvedSenderId } from './sealedSender';
+import { ensureSignalSession, forceRefreshSignalSession } from './x3dh';
 
 /** Match the native-plugin "session not found" error family across Android and Electron. */
 function isSessionNotFoundError(err) {
@@ -27,11 +21,6 @@ function isSessionNotFoundError(err) {
     || m.includes('message_encrypt')
     || m.includes('message_decrypt')
   );
-}
-
-function isUntrustedIdentityError(err) {
-  const m = (err?.message || '').toLowerCase();
-  return m.includes('untrustedidentity') || m.includes('untrusted identity');
 }
 
 export function isSignalV1Message(msg) {
@@ -62,13 +51,6 @@ export async function encryptSignalText(peerUserId, ourUserId, plaintext, peerDe
   }
 }
 
-async function healPeerIdentityAndRetry(peerUserId, peerDeviceId, runDecrypt) {
-  await resetPeerSignalState(peerUserId, peerDeviceId);
-  const bundle = await fetchPeerPreKeyBundle(peerUserId, peerDeviceId);
-  await trustPeerIdentityFromBundle(peerUserId, bundle, peerDeviceId);
-  return runDecrypt();
-}
-
 export async function decryptSignalText(peerUserId, ourUserId, msg, peerDeviceId = 1) {
   if (!isSignalV1Message(msg)) {
     throw new Error('not a signal_v1 message');
@@ -83,19 +65,13 @@ export async function decryptSignalText(peerUserId, ourUserId, msg, peerDeviceId
     );
     return result?.plaintext ?? '';
   };
-  const isPreKey = msg.signal_message_type === SignalMessageType.PREKEY;
   try {
     return await runDecrypt();
   } catch (err) {
-    if (isUntrustedIdentityError(err)) {
-      console.warn('[SSC] decryptSignalText: trusting peer identity for', peerUserId, err?.message || err);
-      return healPeerIdentityAndRetry(peerUserId, peerDeviceId, runDecrypt);
-    }
-    if (isSessionNotFoundError(err)) {
-      console.warn('[SSC] decryptSignalText: re-establishing session for', peerUserId, isPreKey ? '(prekey)' : '', err?.message || err);
-      return healPeerIdentityAndRetry(peerUserId, peerDeviceId, runDecrypt);
-    }
-    throw err;
+    if (!isSessionNotFoundError(err)) throw err;
+    console.warn('[SSC] decryptSignalText: re-establishing session for', peerUserId, err?.message || err);
+    await forceRefreshSignalSession(peerUserId, ourUserId, peerDeviceId);
+    return await runDecrypt();
   }
 }
 

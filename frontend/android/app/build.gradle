@@ -18,8 +18,8 @@ android {
         applicationId "chat.ssc.secure"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 12
-        versionName "1.0.12"
+        versionCode 21
+        versionName "1.0.18"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // Phones only — drop x86/x86_64 emulator libs (~440 MB saved).
@@ -37,6 +37,10 @@ android {
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
             }
+            // v2/v3 alongside v1 — MobSF Janus warning when only v1 is enabled.
+            enableV1Signing true
+            enableV2Signing true
+            enableV3Signing true
         }
     }
     buildTypes {

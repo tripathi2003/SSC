@@ -3,6 +3,7 @@ import { useLocale } from '../context/LocaleContext';
 import { Translate, Paperclip, Check, Checks, DownloadSimple } from '@phosphor-icons/react';
 import { retryIngestMessagePlaintext } from '../lib/messageIngest';
 import { getMessagePlaintextEntry, subscribeMessagePlaintext } from '../lib/messagePlaintextStore';
+import { decryptMessageBody } from '../lib/signal/migration';
 import { isSignalV1Message } from '../lib/signal/messages';
 import { isSignalV1AttachmentMessage } from '../lib/signal/attachments';
 import { translateMessageText } from '../lib/translation/translateClient';
@@ -87,7 +88,11 @@ export default function Message({
     setPlaintext(null);
     setDecrypting(true);
     setDecryptAttempt((n) => n + 1);
-    retryIngestMessagePlaintext(msg, { myUserId, peerUserId, privateKey }).catch(() => {});
+    // Engine 8.6 dual-read: attempt unified decrypt directly, fall back to ingest pipeline.
+    decryptMessageBody(msg, { myUserId, peerUserId, privateKey })
+      .then((pt) => { setPlaintext(pt); setDecrypting(false); })
+      .catch(() => retryIngestMessagePlaintext(msg, { myUserId, peerUserId, privateKey })
+        .catch(() => { setDecrypting(false); }));
   }, [msg, myUserId, peerUserId, privateKey]);
 
   useEffect(() => subscribeMemoryWipe(() => {

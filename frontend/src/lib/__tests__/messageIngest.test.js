@@ -6,14 +6,28 @@ jest.mock('../sentPlaintextCache', () => ({
   getSentPlaintext: jest.fn(),
 }));
 
+jest.mock('../signal/x3dh', () => ({
+  ensureSignalSession: jest.fn().mockResolvedValue({}),
+}));
+
+jest.mock('../signal/sealedSender', () => ({
+  getResolvedSenderId: jest.fn((msg, myUserId) => msg?.sender_id ?? null),
+}));
+
 import { decryptMessageBody } from '../signal/migration';
 import { getSentPlaintext } from '../sentPlaintextCache';
 import {
   buildDecryptedBodiesMap,
+  conversationPeerFromList,
   ingestMessagePlaintext,
+  resolveIngestPeerUserId,
   retryIngestMessagePlaintext,
 } from '../messageIngest';
-import { clearMessagePlaintextStore, getReceivedPlaintext } from '../messagePlaintextStore';
+import {
+  clearMessagePlaintextStore,
+  getMessagePlaintextEntry,
+  getReceivedPlaintext,
+} from '../messagePlaintextStore';
 
 describe('messageIngest', () => {
   beforeEach(() => {
@@ -63,10 +77,42 @@ describe('messageIngest', () => {
     expect(decryptMessageBody).toHaveBeenCalledTimes(2);
   });
 
+  it('resolveIngestPeerUserId uses conversation peer for sealed inbound', () => {
+    const msg = { sender_id: null, sealed_sender: true };
+    expect(resolveIngestPeerUserId(msg, { myUserId: 'me', conversationPeerUserId: 'dots' })).toBe('dots');
+    expect(resolveIngestPeerUserId(msg, { myUserId: 'me', conversationPeerUserId: null })).toBeNull();
+  });
+
+  it('resolveIngestPeerUserId does not treat null sender as peer id', () => {
+    const msg = { sender_id: null, sealed_sender: true };
+    const wrong = msg.sender_id !== 'me' ? msg.sender_id : 'dots';
+    expect(wrong).toBeNull();
+    expect(resolveIngestPeerUserId(msg, { myUserId: 'me', conversationPeerUserId: 'dots' })).toBe('dots');
+  });
+
+  it('conversationPeerFromList finds DM peer', () => {
+    const convs = [{ conversation_id: 'c1', is_group: false, peer: { user_id: 'u_dots' } }];
+    expect(conversationPeerFromList('c1', convs)).toBe('u_dots');
+    expect(conversationPeerFromList('c_missing', convs)).toBeNull();
+  });
+
+  it('does not latch NO_KEY when peerUserId is missing', async () => {
+    decryptMessageBody.mockRejectedValue(new Error('NO_KEY'));
+    const msg = { message_id: 'm4', sender_id: null, sealed_sender: true, ciphertext: 'ct' };
+    await ingestMessagePlaintext(msg, { myUserId: 'me', peerUserId: null });
+    expect(getReceivedPlaintext('m4')).toBeNull();
+    expect(getMessagePlaintextEntry('m4')).toBeNull();
+
+    decryptMessageBody.mockResolvedValue('hello sealed');
+    await ingestMessagePlaintext(msg, { myUserId: 'me', peerUserId: 'dots' });
+    expect(getReceivedPlaintext('m4')).toBe('hello sealed');
+    expect(decryptMessageBody).toHaveBeenCalledTimes(2);
+  });
+
   it('buildDecryptedBodiesMap reads store and sent cache', () => {
     const messages = [
       { message_id: 'a', sender_id: 'peer' },
-      { message_id: 'b', sender_id: 'me', ciphertext: 'c' },
+      { message_id: 'b', sender_id: 'me', protocol: 'signal_v1', ciphertext: 'c' },
     ];
     decryptMessageBody.mockResolvedValue('stored');
     return ingestMessagePlaintext(messages[0], { myUserId: 'me', peerUserId: 'peer' }).then(() => {

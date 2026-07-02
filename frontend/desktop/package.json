@@ -1,6 +1,6 @@
 {
   "name": "ssc-desktop",
-  "version": "1.0.24",
+  "version": "1.0.26",
   "description": "SSC desktop client — Windows + Mac with libsignal",
   "private": true,
   "type": "module",
@@ -10,6 +10,8 @@
   "scripts": {
     "start": "electron .",
     "postinstall": "electron-builder install-app-deps",
+    "prebuild:win": "node scripts/prepare-desktop-pack.mjs",
+    "postbuild:win": "node scripts/verify-desktop-renderer.mjs",
     "build:win": "electron-builder --config electron-builder.config.mjs --win nsis",
     "build:mac": "electron-builder --config electron-builder.config.mjs --mac dmg",
     "build:all": "electron-builder --config electron-builder.config.mjs --win nsis --mac dmg"

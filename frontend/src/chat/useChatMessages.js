@@ -100,7 +100,7 @@ export function useChatMessages({
           } else if (msg?.message_type === STATUS_SKDM_MESSAGE_TYPE) {
             processIncomingStatusSkdmMessage(msg, {
               myUserId: user?.user_id,
-              peerUserId: msg.sender_id !== user?.user_id ? msg.sender_id : peer?.user_id,
+              peerUserId: peer?.user_id,
             }).catch(() => {});
           } else {
             visible.push(msg);

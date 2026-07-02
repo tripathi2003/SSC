@@ -18,8 +18,8 @@ android {
         applicationId "chat.ssc.secure"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 27
-        versionName "1.0.24"
+        versionCode 28
+        versionName "1.0.26"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // Phones only — drop x86/x86_64 emulator libs (~440 MB saved).

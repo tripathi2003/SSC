@@ -32,7 +32,11 @@ import { applyMessageEdited } from '../lib/messageEdit';
 import { applyMessageReactionUpdate } from '../lib/messageReactions';
 import { applyPollVoteUpdate } from '../lib/pollMessage';
 import { messageBelongsToTopic } from '../lib/groupTopics';
-import { ingestMessagePlaintext } from '../lib/messageIngest';
+import {
+  conversationPeerFromList,
+  ingestMessagePlaintext,
+  resolveIngestPeerUserId,
+} from '../lib/messageIngest';
 
 export function useChatSocket({
   user,
@@ -68,16 +72,24 @@ export function useChatSocket({
           } else if (incoming?.message_type === STATUS_SKDM_MESSAGE_TYPE) {
             processIncomingStatusSkdmMessage(incoming, {
               myUserId: user.user_id,
-              peerUserId: incoming.sender_id !== user.user_id ? incoming.sender_id : peer?.user_id,
+              peerUserId: resolveIngestPeerUserId(incoming, {
+                myUserId: user.user_id,
+                conversationPeerUserId: incoming.conversation_id === activeId
+                  ? peer?.user_id
+                  : conversationPeerFromList(incoming.conversation_id, conversationsRef.current),
+              }),
             }).catch((err) => {
               console.warn('[SSC] incoming status SKDM failed:', err?.message || err);
             });
           } else {
             ingestMessagePlaintext(incoming, {
               myUserId: user.user_id,
-              peerUserId: incoming.sender_id !== user.user_id
-                ? incoming.sender_id
-                : peer?.user_id,
+              peerUserId: resolveIngestPeerUserId(incoming, {
+                myUserId: user.user_id,
+                conversationPeerUserId: incoming.conversation_id === activeId
+                  ? peer?.user_id
+                  : conversationPeerFromList(incoming.conversation_id, conversationsRef.current),
+              }),
             }).catch(() => {});
             if (
               incoming.conversation_id === activeId

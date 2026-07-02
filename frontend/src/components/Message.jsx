@@ -91,7 +91,8 @@ export default function Message({
     // Engine 8.6 dual-read: attempt unified decrypt directly, fall back to ingest pipeline.
     decryptMessageBody(msg, { myUserId, peerUserId, privateKey })
       .then((pt) => { setPlaintext(pt); setDecrypting(false); })
-      .catch(() => retryIngestMessagePlaintext(msg, { myUserId, peerUserId, privateKey }).catch(() => {}));
+      .catch(() => retryIngestMessagePlaintext(msg, { myUserId, peerUserId, privateKey })
+        .catch(() => { setDecrypting(false); }));
   }, [msg, myUserId, peerUserId, privateKey]);
 
   useEffect(() => subscribeMemoryWipe(() => {

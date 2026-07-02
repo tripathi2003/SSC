@@ -5,6 +5,8 @@ set "YARN_CMD=yarn"
 where yarn >nul 2>&1
 if errorlevel 1 set "YARN_CMD=corepack yarn"
 cd /d "%ROOT%\frontend"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\sync_release_version.ps1"
+if errorlevel 1 exit /b 1
 echo == Building React bundle for desktop ==
 call %YARN_CMD% build:desktop
 if errorlevel 1 exit /b 1
@@ -18,7 +20,7 @@ if defined CSC_LINK echo Signing enabled: CSC_LINK is set
 call %YARN_CMD% build:win
 if errorlevel 1 exit /b 1
 echo.
-for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "(Get-Content package.json ^| ConvertFrom-Json).version"`) do set "DESKTOP_VER=%%V"
+for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "(Get-Content package.json -Raw | ConvertFrom-Json).version"`) do set "DESKTOP_VER=%%V"
 if not defined DESKTOP_VER (
   echo ERROR: could not read version from desktop\package.json
   exit /b 1

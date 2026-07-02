@@ -2,6 +2,7 @@
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 
+& (Join-Path $PSScriptRoot "sync_release_version.ps1")
 & (Join-Path $PSScriptRoot "prepare_downloads.ps1")
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "prepare_downloads failed (exit $LASTEXITCODE)" }
 

@@ -18,6 +18,8 @@ if not defined JAVA_HOME (
 if defined JAVA_HOME set "PATH=%JAVA_HOME%\bin;%PATH%"
 
 cd /d "%ROOT%\frontend"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\sync_release_version.ps1"
+if errorlevel 1 exit /b 1
 echo == Clean production web bundle (no source maps) ==
 set GENERATE_SOURCEMAP=false
 call %YARN_CMD% cap:sync

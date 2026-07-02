@@ -187,6 +187,9 @@ const STRINGS = {
     siteUpdateApiDomainBody: 'api.supersecurechat.com is live with Turnstile on register/login and Redis-backed sessions.',
     siteUpdateTurnstileTitle: 'Bot protection on auth',
     siteUpdateTurnstileBody: 'Cloudflare Turnstile guards web registration and login surfaces in production.',
+    siteUpdateV1026SealedIngestTitle: 'v1.0.26 — sealed-sender message fix',
+    siteUpdateV1026SealedIngestBody:
+      'Fixes decrypt failures and disappearing text for sealed-sender chats (Android + Windows). Website, APK, and installer versions are aligned. Download v1.0.26.',
     siteUpdateV1024IngestStoreTitle: 'v1.0.24 — Signal-style message ingest',
     siteUpdateV1024IngestStoreBody:
       'Decrypt-once ingest pipeline with ephemeral plaintext store. Received messages stay visible; UI no longer re-decrypts. Still 24h auto-recycle. Download v1.0.24 APK + Windows installer.',

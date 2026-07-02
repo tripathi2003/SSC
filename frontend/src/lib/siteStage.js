@@ -13,6 +13,12 @@ export function getPublicAppVersion() {
 /** @type {SiteUpdateEntry[]} */
 export const PUBLIC_SITE_UPDATES = [
   {
+    id: '2026-07-02-v1026-sealed-ingest',
+    date: '2026-07-02',
+    titleKey: 'siteUpdateV1026SealedIngestTitle',
+    bodyKey: 'siteUpdateV1026SealedIngestBody',
+  },
+  {
     id: '2026-07-02-v1024-ingest-store',
     date: '2026-07-02',
     titleKey: 'siteUpdateV1024IngestStoreTitle',

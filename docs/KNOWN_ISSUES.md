@@ -1,6 +1,6 @@
 # Known issues (public beta)
 
-**Last updated:** 2026-06-30 · **Android APK:** v1.0.17 · **Windows desktop:** v1.0.18
+**Last updated:** 2026-06-30 · **Android APK:** v1.0.26 · **Windows desktop:** v1.0.26
 
 SSC is install-only (Android APK + Windows/Mac desktop). These issues are tracked on GitHub — **help wanted** from contributors with Android, Signal/libsignal, or Capacitor experience.
 
@@ -30,4 +30,4 @@ SSC is install-only (Android APK + Windows/Mac desktop). These issues are tracke
 
 - https://www.supersecurechat.com/#downloads
 - APK: https://www.supersecurechat.com/downloads/SSC-app-release.apk
-- Windows: https://www.supersecurechat.com/downloads/SSC-Setup-1.0.18.exe
+- Windows: https://www.supersecurechat.com/downloads/SSC-Setup-1.0.26.exe

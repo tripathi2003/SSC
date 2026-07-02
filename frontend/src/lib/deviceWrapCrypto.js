@@ -34,6 +34,13 @@ function hasPersistedSessionWrap() {
     && !!localStorage.getItem(NATIVE_SESSION_WRAP_KEY);
 }
 
+/** Android Keystore cold-start fallback — AES wrap key material only, never JWT/plaintext. */
+function persistNativeWrapKeyBackup(material) {
+  if (!isNativeApp() || typeof localStorage === 'undefined' || !material) return;
+  // codeql[js/clear-text-storage-of-sensitive-information]: AES wrap key backup for Android Keystore cold-start (#53)
+  localStorage.setItem(DEVICE_WRAP_KEY, material);
+}
+
 async function readHardwareWrapKeyWithRetry() {
   for (let attempt = 1; attempt <= HARDWARE_READ_RETRIES; attempt += 1) {
     const stored = await getHardwareSecret(DEVICE_WRAP_KEY);
@@ -78,8 +85,7 @@ export async function migrateDeviceWrapKeyToHardware() {
     if (!isNativeApp()) {
       localStorage.removeItem(DEVICE_WRAP_KEY);
     } else {
-      // codeql[js/clear-text-storage-of-sensitive-information]: AES wrap key backup for Android Keystore cold-start (#53)
-      localStorage.setItem(DEVICE_WRAP_KEY, existing);
+      persistNativeWrapKeyBackup(existing);
     }
     return true;
   }
@@ -97,8 +103,7 @@ async function writeWrapKeyMaterial(material) {
       if (verified === material && typeof localStorage !== 'undefined') {
         // Android Keystore can lag on cold start — keep localStorage fallback on native.
         if (isNativeApp()) {
-          // codeql[js/clear-text-storage-of-sensitive-information]: AES wrap key backup for Android Keystore cold-start (#53)
-          localStorage.setItem(DEVICE_WRAP_KEY, material);
+          persistNativeWrapKeyBackup(material);
         } else {
           localStorage.removeItem(DEVICE_WRAP_KEY);
         }

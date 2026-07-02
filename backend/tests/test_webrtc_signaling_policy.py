@@ -91,6 +91,53 @@ def test_signal_v1_group_offer_ok():
     assert out["sdp"] is None
 
 
+def test_signal_v1_group_answer_ok():
+    dist_id = str(uuid.uuid4())
+    out = validate_signaling_relay({
+        "type": "call-answer",
+        "to": "u1",
+        "group": True,
+        "signaling_protocol": "signal_v1",
+        "signaling_ciphertext": _VALID_CT,
+        "signal_message_type": 7,
+        "distribution_id": dist_id,
+    })
+    assert out["signaling_protocol"] == SignalingProtocol.SIGNAL_V1.value
+    assert out["signal_message_type"] == 7
+    assert out["distribution_id"] == dist_id
+    assert out["sdp"] is None
+    assert out["candidate"] is None
+
+
+def test_signal_v1_group_ice_candidate_ok():
+    dist_id = str(uuid.uuid4())
+    out = validate_signaling_relay({
+        "type": "ice-candidate",
+        "to": "u1",
+        "group": True,
+        "signaling_protocol": "signal_v1",
+        "signaling_ciphertext": _VALID_CT,
+        "signal_message_type": 7,
+        "distribution_id": dist_id,
+    })
+    assert out["signaling_protocol"] == SignalingProtocol.SIGNAL_V1.value
+    assert out["signal_message_type"] == 7
+    assert out["distribution_id"] == dist_id
+    assert out["candidate"] is None
+
+
+def test_signal_v1_group_rejects_missing_distribution_id():
+    with pytest.raises(SignalingValidationError, match="distribution_id"):
+        validate_signaling_relay({
+            "type": "call-offer",
+            "to": "u2",
+            "group": True,
+            "signaling_protocol": "signal_v1",
+            "signaling_ciphertext": _VALID_CT,
+            "signal_message_type": 7,
+        })
+
+
 def test_signal_v1_group_rejects_1to1_message_types():
     with pytest.raises(SignalingValidationError):
         validate_signaling_relay({

@@ -178,7 +178,19 @@ public class SscSignalStore implements SenderKeyStore {
     }
 
     public synchronized void persistSessions() throws JSONException {
+        persistSessionsWithPeer(null, 0);
+    }
+
+    /**
+     * Atomically persist all tracked sessions plus an optional new peer in a single commit.
+     * Eliminates the race window where session_peer_addrs is written before session data,
+     * which caused session loss on Samsung and low-end devices that aggressively kill processes.
+     */
+    public synchronized void persistSessionsWithPeer(String newPeerId, int newDeviceId) throws JSONException {
         Set<String> addrs = loadSessionPeerAddrs();
+        if (newPeerId != null && !newPeerId.isEmpty()) {
+            addrs.add(sessionAddr(newPeerId, newDeviceId));
+        }
         SharedPreferences.Editor editor = prefs.edit();
         Set<String> active = new HashSet<>();
         for (String addr : addrs) {
@@ -314,12 +326,7 @@ public class SscSignalStore implements SenderKeyStore {
     }
 
     public synchronized void trackSessionPeer(String peerUserId, int peerDeviceId) throws JSONException {
-        Set<String> addrs = loadSessionPeerAddrs();
-        addrs.add(sessionAddr(peerUserId, peerDeviceId));
-        if (!prefs.edit().putStringSet("session_peer_addrs", addrs).commit()) {
-            throw new JSONException("failed to track session peer");
-        }
-        persistSessions();
+        persistSessionsWithPeer(peerUserId, peerDeviceId);
     }
 
     public synchronized void trackSessionPeer(String peerUserId) throws JSONException {
@@ -330,7 +337,7 @@ public class SscSignalStore implements SenderKeyStore {
     public void storeSenderKey(SignalProtocolAddress sender, UUID distributionId, SenderKeyRecord record) {
         prefs.edit()
                 .putString(senderKeyKey(sender.getName(), distributionId), encode(record.serialize()))
-                .apply();
+                .commit();
     }
 
     @Override
@@ -522,7 +529,7 @@ public class SscSignalStore implements SenderKeyStore {
 
     public void setLocalDeviceId(int deviceId) {
         int safe = Math.max(1, Math.min(5, deviceId));
-        prefs.edit().putInt("local_device_id", safe).apply();
+        prefs.edit().putInt("local_device_id", safe).commit();
     }
 
     /** Panic wipe — clear local Signal material so X3DH can rebuild cleanly. */

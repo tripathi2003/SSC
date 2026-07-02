@@ -92,7 +92,7 @@ const STRINGS = {
     landingHeroCtaDownloads: 'Download the app',
     landingDownloadsTitle: 'Get Super Secure Chat',
     landingDownloadsSubtitle:
-      'Open testing for v1.0.12 — download, install, and stress-test messaging and calls. Browser-tab chat is not supported.',
+      'Open testing for v{version} — download, install, and stress-test messaging and calls. Browser-tab chat is not supported.',
     landingFeaturesLabel: 'Why SSC',
     landingFeaturesTitle: 'Private messaging, built for real life',
     landingContactTitle: 'Questions or feedback?',
@@ -187,12 +187,15 @@ const STRINGS = {
     siteUpdateApiDomainBody: 'api.supersecurechat.com is live with Turnstile on register/login and Redis-backed sessions.',
     siteUpdateTurnstileTitle: 'Bot protection on auth',
     siteUpdateTurnstileBody: 'Cloudflare Turnstile guards web registration and login surfaces in production.',
-    siteUpdateBuildsAndroidHelpTitle: 'v1.0.17 APK + v1.0.18 Windows live',
+    siteUpdateV1020MessagingTitle: 'v1.0.20 — messaging works',
+    siteUpdateV1020MessagingBody:
+      'Android can send Signal messages again. Desktop keeps received messages visible after decrypt. Download v1.0.20 APK + Windows installer from this page.',
+    siteUpdateBuildsAndroidHelpTitle: 'v1.0.20 Android + Windows live',
     siteUpdateBuildsAndroidHelpBody:
-      'Latest installers are on this page. Android outbound messaging is a known open issue — contributors welcome; see GitHub docs/KNOWN_ISSUES.md.',
+      'Latest v1.0.20 installers are on this page. Report issues on the feedback page.',
     siteUpdatePublicBetaTitle: 'Public beta downloads open',
     siteUpdatePublicBetaBody:
-      'v1.0.12 Android and Windows installers are on the site. Anonymous feedback form for device + bug reports. Pre-release — not the final product.',
+      'Android and Windows installers are on the site. Anonymous feedback form for device + bug reports. Pre-release — not the final product.',
     siteUpdateTrustOpsTitle: 'Trust & security operations',
     siteUpdateTrustOpsBody: 'Public threat-model page, responsible disclosure (VDP), RFC 9116 security.txt, live status page, opt-in crash reporting, and OWASP ZAP baseline scans in CI.',
     siteUpdateDistributionTitle: 'Store listing & signing prep',

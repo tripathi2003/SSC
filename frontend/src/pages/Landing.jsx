@@ -504,7 +504,7 @@ export default function Landing() {
                   <SectionHeading
                     label={t('landingVersionLabel', { version: APP_VERSION })}
                     title={t('landingDownloadsTitle')}
-                    body={t('landingDownloadsSubtitle')}
+                    body={t('landingDownloadsSubtitle', { version: APP_VERSION })}
                   />
 
                   <div className="mt-8 rounded-xl border border-[#27272A] bg-[#121212] px-5 py-4 flex gap-3 text-sm text-[#A1A1AA]">

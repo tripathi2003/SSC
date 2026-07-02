@@ -25,4 +25,5 @@ try {
 Write-Host ""
 Write-Host "LIVE: https://www.supersecurechat.com"
 Write-Host "APK:  https://www.supersecurechat.com/downloads/SSC-app-release.apk"
-Write-Host "WIN:  https://www.supersecurechat.com/downloads/SSC-Setup-1.0.18.exe"
+$DesktopPkg = Get-Content (Join-Path $RepoRoot "frontend\desktop\package.json") -Raw | ConvertFrom-Json
+Write-Host "WIN:  https://www.supersecurechat.com/downloads/SSC-Setup-$($DesktopPkg.version).exe"

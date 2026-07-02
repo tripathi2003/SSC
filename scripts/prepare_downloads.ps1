@@ -5,28 +5,57 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 $Dest = Join-Path $RepoRoot "frontend\public\downloads"
 $DesktopDest = Join-Path $Dest "desktop"
-$ApkSrc = "C:\Users\smash\Desktop\SSC\APK\SSC-app-release.apk"
-$WinSrc = "C:\Users\smash\Desktop\SSC\SSC-Setup-1.0.12.exe"
+
+$DesktopPkg = Get-Content (Join-Path $RepoRoot "frontend\desktop\package.json") -Raw | ConvertFrom-Json
+$Version = $DesktopPkg.version
+
+$ApkCandidates = @(
+    (Join-Path $RepoRoot "frontend\android\app\build\outputs\apk\release\app-release.apk"),
+    "C:\Users\smash\Desktop\SSC\APK\SSC-app-release.apk"
+)
+$WinCandidates = @(
+    (Join-Path $RepoRoot "frontend\desktop\dist\SSC-Setup-$Version.exe"),
+    "C:\Users\smash\Desktop\SSC\SSC-Setup-$Version.exe"
+)
 $LatestYmlSrc = Join-Path $RepoRoot "frontend\desktop\dist\latest.yml"
+
+function Resolve-FirstExistingPath([string[]]$Candidates) {
+    foreach ($path in $Candidates) {
+        if (Test-Path $path) { return $path }
+    }
+    return $null
+}
 
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 New-Item -ItemType Directory -Force -Path $DesktopDest | Out-Null
 
-if (-not (Test-Path $ApkSrc)) {
-    Write-Warning "APK not found: $ApkSrc - build with SSC-BUILD-APK.bat first"
+$ApkSrc = Resolve-FirstExistingPath $ApkCandidates
+if (-not $ApkSrc) {
+    Write-Warning "APK not found. Build with SSC-BUILD-APK.bat first."
 } else {
     Copy-Item -Force $ApkSrc (Join-Path $Dest "SSC-app-release.apk")
     $mb = [math]::Round((Get-Item $ApkSrc).Length / 1MB, 1)
-    Write-Host "OK: APK copied (${mb} MB)"
+    Write-Host "OK: APK copied from $ApkSrc (${mb} MB)"
 }
 
-if (-not (Test-Path $WinSrc)) {
-    Write-Warning "Windows installer not found: $WinSrc - build with SSC-BUILD-DESKTOP-WIN.bat first"
+$WinSrc = Resolve-FirstExistingPath $WinCandidates
+$DesktopFolder = "C:\Users\smash\Desktop\SSC"
+if (-not $WinSrc) {
+    Write-Warning "Windows installer not found. Build with SSC-BUILD-DESKTOP-WIN.bat first."
 } else {
-    Copy-Item -Force $WinSrc (Join-Path $Dest "SSC-Setup-1.0.12.exe")
-    Copy-Item -Force $WinSrc (Join-Path $DesktopDest "SSC-Setup-1.0.12.exe")
+    New-Item -ItemType Directory -Force -Path $DesktopFolder | Out-Null
+    $winName = "SSC-Setup-$Version.exe"
+    Copy-Item -Force $WinSrc (Join-Path $Dest $winName)
+    Copy-Item -Force $WinSrc (Join-Path $DesktopDest $winName)
+    Copy-Item -Force $WinSrc (Join-Path $DesktopFolder $winName)
+    foreach ($stale in @($Dest, $DesktopDest, $DesktopFolder)) {
+        Get-ChildItem $stale -Filter "SSC-Setup-*.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne $winName } |
+            Remove-Item -Force
+    }
     $mbWin = [math]::Round((Get-Item $WinSrc).Length / 1MB, 1)
-    Write-Host "OK: Windows installer copied (${mbWin} MB)"
+    Write-Host "OK: Windows installer copied from $WinSrc (${mbWin} MB)"
+    Write-Host "OK: Desktop SSC folder: $(Join-Path $DesktopFolder $winName)"
 }
 
 if (-not (Test-Path $LatestYmlSrc)) {

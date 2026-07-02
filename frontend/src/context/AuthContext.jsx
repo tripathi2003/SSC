@@ -17,8 +17,10 @@ import { registerMemoryWipeHandler } from '../lib/memoryWipe';
 import {
   bootstrapSessionFromDevice,
   clearSessionToken,
+  getSessionToken,
   persistSessionToken,
   purgeLegacyJwtFromStorage,
+  setSessionTokenInMemory,
 } from '../lib/sessionStore';
 import { purgeLegacyVerificationFlags } from '../lib/verification';
 import { ensurePreKeysUploaded } from '../lib/signal/prekeys';
@@ -31,6 +33,12 @@ import {
 } from '../lib/vaultCredentialStore';
 
 const AuthCtx = createContext(null);
+
+function isGoogleOAuthReturn() {
+  if (typeof window === 'undefined') return false;
+  const hash = window.location.hash || '';
+  return hash.includes('/auth/google') && hash.includes('oauth_code=');
+}
 
 function notifyEncryptionBootstrapFailure(result) {
   if (!isInstalledClient()) return;
@@ -63,6 +71,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [privateKey, setPrivateKey] = useState(null);
   const autoUnlockAttempted = useRef(null);
+  const authGeneration = useRef(0);
 
   const tryAutoUnlockVault = useCallback(async (userData, { force = false } = {}) => {
     if (!userData?.encrypted_private_key || !userData?.pk_salt) return null;
@@ -82,19 +91,40 @@ export function AuthProvider({ children }) {
   }, []);
 
   const refreshUser = useCallback(async () => {
+    const generation = authGeneration.current;
     try {
       const { data } = await api.get('/auth/me');
+      if (generation !== authGeneration.current) return data;
       setUser(data);
       syncPrekeysOnInstalledClient().catch((err) => {
         console.error('[SSC] background prekey sync failed:', err?.message || err);
       });
-      await tryAutoUnlockVault(data);
+      tryAutoUnlockVault(data).catch(() => {});
       return data;
     } catch (err) {
-      setUser(null);
+      if (generation !== authGeneration.current) return null;
       if (err?.response?.status === 401) {
-        clearSessionToken();
-        autoUnlockAttempted.current = null;
+        const retried = await bootstrapSessionFromDevice();
+        if (retried && generation === authGeneration.current) {
+          try {
+            const { data } = await api.get('/auth/me');
+            if (generation !== authGeneration.current) return data;
+            setUser(data);
+            syncPrekeysOnInstalledClient().catch((e) => {
+              console.error('[SSC] background prekey sync failed:', e?.message || e);
+            });
+            tryAutoUnlockVault(data).catch(() => {});
+            return data;
+          } catch {
+            /* fall through */
+          }
+        }
+        if (!getSessionToken()) {
+          setUser(null);
+          clearSessionToken();
+          autoUnlockAttempted.current = null;
+        }
+        return null;
       }
       return null;
     }
@@ -124,11 +154,21 @@ export function AuthProvider({ children }) {
       setLoading(false);
       return;
     }
+    if (isGoogleOAuthReturn()) {
+      setLoading(false);
+      return;
+    }
     (async () => {
+      // Must fully await device session restore — 5s timeout caused false "Not authenticated"
+      // on slower Android devices when hardware secret store + AES unwrap takes longer.
       await bootstrapSessionFromDevice();
       const data = await refreshUser();
-      if (data) await runSilentBootstrap();
       setLoading(false);
+      if (data) {
+        runSilentBootstrap().catch((err) => {
+          console.error('[SSC] background bootstrap failed:', err?.message || err);
+        });
+      }
     })();
   }, [refreshUser, runSilentBootstrap]);
 
@@ -139,6 +179,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     return registerMemoryWipeHandler(() => {
+      authGeneration.current += 1;
       setUser(null);
       setPrivateKey(null);
       autoUnlockAttempted.current = null;
@@ -147,22 +188,22 @@ export function AuthProvider({ children }) {
   }, []);
 
   const loginWithToken = async (token, userObj) => {
-    await persistSessionToken(token);
+    authGeneration.current += 1;
+    if (token) {
+      setSessionTokenInMemory(token);
+      await persistSessionToken(token);
+    }
     setUser(userObj);
+    setLoading(false);
     autoUnlockAttempted.current = null;
-    await tryAutoUnlockVault(userObj);
+    void tryAutoUnlockVault(userObj);
     if (isInstalledClient()) {
-      const pre = await syncPrekeysOnInstalledClient({ notify: true });
-      if (pre?.ok) {
-        const boot = await bootstrapSignalIdentity(refreshUser);
+      void (async () => {
+        const boot = await runSilentBootstrap();
         if (!boot?.ok) {
           notifyEncryptionBootstrapFailure(boot);
         }
-      }
-      const fresh = await refreshUser();
-      if (fresh && !fresh.signal_prekeys_ready) {
-        toast.error(t('encryptionErrSelfPrekeys', getStoredUiLang()));
-      }
+      })();
     }
   };
 

@@ -14,13 +14,18 @@ export async function persistNativeSession(token) {
   if (blob) localStorage.setItem(NATIVE_SESSION_WRAP_KEY, blob);
 }
 
+export function hasPersistedNativeSession() {
+  if (!isInstalledClient() || typeof localStorage === 'undefined') return false;
+  return !!localStorage.getItem(NATIVE_SESSION_WRAP_KEY);
+}
+
 export async function restoreNativeSession() {
   if (!isInstalledClient() || typeof localStorage === 'undefined') return null;
   const blob = localStorage.getItem(NATIVE_SESSION_WRAP_KEY);
   if (!blob) return null;
   const token = await unwrapDeviceSecret(blob);
   if (!token) {
-    localStorage.removeItem(NATIVE_SESSION_WRAP_KEY);
+    // Transient Keystore lag on cold start — do not wipe ciphertext; bootstrap retries.
     return null;
   }
   return token;

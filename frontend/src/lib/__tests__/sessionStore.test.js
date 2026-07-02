@@ -1,6 +1,6 @@
 import { webcrypto } from 'crypto';
 import { TextEncoder, TextDecoder } from 'util';
-import { persistNativeSession } from '../nativeSessionStore';
+import { persistNativeSession, hasPersistedNativeSession } from '../nativeSessionStore';
 import {
   bootstrapSessionFromDevice,
   persistSessionToken,
@@ -27,6 +27,7 @@ describe('sessionStore', () => {
 
   it('bootstraps session from encrypted device store on cold start', async () => {
     await persistNativeSession('jwt-cold-start');
+    expect(hasPersistedNativeSession()).toBe(true);
     expect(getSessionToken()).toBeNull();
     const restored = await bootstrapSessionFromDevice();
     expect(restored).toBe('jwt-cold-start');
@@ -41,4 +42,5 @@ describe('sessionStore', () => {
     expect(getSessionToken()).toBeNull();
     expect(await bootstrapSessionFromDevice()).toBeNull();
   });
+
 });

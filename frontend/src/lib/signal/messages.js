@@ -14,7 +14,13 @@ import { ensureSignalSession, forceRefreshSignalSession } from './x3dh';
 /** Match the native-plugin "session not found" error family across Android and Electron. */
 function isSessionNotFoundError(err) {
   const m = (err?.message || '').toLowerCase();
-  return m.includes('session') && (m.includes('not found') || m.includes('no session') || m.includes('session record'));
+  return m.includes('session') && (
+    m.includes('not found')
+    || m.includes('no session')
+    || m.includes('session record')
+    || m.includes('message_encrypt')
+    || m.includes('message_decrypt')
+  );
 }
 
 export function isSignalV1Message(msg) {
@@ -49,14 +55,24 @@ export async function decryptSignalText(peerUserId, ourUserId, msg, peerDeviceId
   if (!isSignalV1Message(msg)) {
     throw new Error('not a signal_v1 message');
   }
-  const result = await nativeDecrypt(
-    peerUserId,
-    ourUserId,
-    msg.ciphertext,
-    msg.signal_message_type,
-    peerDeviceId,
-  );
-  return result?.plaintext ?? '';
+  const runDecrypt = async () => {
+    const result = await nativeDecrypt(
+      peerUserId,
+      ourUserId,
+      msg.ciphertext,
+      msg.signal_message_type,
+      peerDeviceId,
+    );
+    return result?.plaintext ?? '';
+  };
+  try {
+    return await runDecrypt();
+  } catch (err) {
+    if (!isSessionNotFoundError(err)) throw err;
+    console.warn('[SSC] decryptSignalText: re-establishing session for', peerUserId, err?.message || err);
+    await forceRefreshSignalSession(peerUserId, ourUserId, peerDeviceId);
+    return await runDecrypt();
+  }
 }
 
 /** Remote user id for session lookup: sender when receiving, peer when viewing own sends. */

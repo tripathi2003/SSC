@@ -176,7 +176,11 @@ public class SscLibsignalPlugin extends Plugin {
             int localDev = store.getLocalDeviceId();
             SignalProtocolAddress remoteAddress = new SignalProtocolAddress(peerUserId, peerDev);
             SignalProtocolAddress localAddress = new SignalProtocolAddress(ourUserId, localDev);
-            boolean hadSession = protocolStore.containsSession(remoteAddress);
+            boolean force = Boolean.TRUE.equals(call.getBoolean("force", false));
+            if (force) {
+                store.deleteSessionForPeer(peerUserId, peerDev);
+            }
+            boolean hadSession = !force && protocolStore.containsSession(remoteAddress);
 
             if (!hadSession) {
                 PreKeyBundle bundle = buildPreKeyBundle(bundleObj);
@@ -185,8 +189,16 @@ public class SscLibsignalPlugin extends Plugin {
                         remoteAddress,
                         localAddress
                 );
-                builder.process(bundle);
-                store.trackSessionPeer(peerUserId);
+                try {
+                    builder.process(bundle);
+                } catch (org.signal.libsignal.protocol.UntrustedIdentityException identityErr) {
+                    store.resetPeerSignalState(peerUserId, peerDev);
+                    protocolStore.saveIdentity(remoteAddress, bundle.getIdentityKey());
+                    builder.process(bundle);
+                }
+                store.trackSessionPeer(peerUserId, peerDev);
+                store.persistPeerIdentity(peerUserId, peerDev, bundle.getIdentityKey());
+                store.persistSessions();
             }
 
             JSObject ret = new JSObject();
@@ -197,6 +209,37 @@ public class SscLibsignalPlugin extends Plugin {
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("establishSession failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void trustPeerIdentityFromBundle(PluginCall call) {
+        try {
+            String peerUserId = call.getString("peer_user_id");
+            JSObject bundleObj = call.getObject("bundle");
+            if (peerUserId == null || peerUserId.isEmpty()) {
+                call.reject("peer_user_id required");
+                return;
+            }
+            if (bundleObj == null) {
+                call.reject("bundle required");
+                return;
+            }
+            SscSignalStore store = SscSignalStore.getInstance(getContext());
+            store.ensureLocalKeys();
+            InMemorySignalProtocolStore protocolStore = store.getProtocolStore();
+            int peerDev = bundleObj.has("device_id") ? Math.max(1, bundleObj.getInteger("device_id")) : peerDeviceId(call);
+            SignalProtocolAddress remoteAddress = new SignalProtocolAddress(peerUserId, peerDev);
+            PreKeyBundle bundle = buildPreKeyBundle(bundleObj);
+            protocolStore.saveIdentity(remoteAddress, bundle.getIdentityKey());
+            store.persistPeerIdentity(peerUserId, peerDev, bundle.getIdentityKey());
+            JSObject ret = new JSObject();
+            ret.put("trusted", true);
+            ret.put("peer_user_id", peerUserId);
+            ret.put("peer_device_id", peerDev);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("trustPeerIdentityFromBundle failed: " + e.getMessage(), e);
         }
     }
 
@@ -224,8 +267,9 @@ public class SscLibsignalPlugin extends Plugin {
             SessionCipher cipher = buildCipher(store, peerUserId, ourUserId, peerDeviceId(call), store.getLocalDeviceId());
             CiphertextMessage encrypted = cipher.encrypt(plaintext.getBytes(StandardCharsets.UTF_8));
 
+            int peerDev = peerDeviceId(call);
             store.persistSessions();
-            store.trackSessionPeer(peerUserId);
+            store.trackSessionPeer(peerUserId, peerDev);
 
             JSObject ret = new JSObject();
             ret.put("protocol", "signal_v1");
@@ -263,23 +307,24 @@ public class SscLibsignalPlugin extends Plugin {
 
             SscSignalStore store = SscSignalStore.getInstance(getContext());
             store.ensureLocalKeys();
-            SessionCipher cipher = buildCipher(store, peerUserId, ourUserId, peerDeviceId(call), store.getLocalDeviceId());
+            int peerDev = peerDeviceId(call);
+            int localDev = store.getLocalDeviceId();
             byte[] serialized = decode(ciphertextB64);
             byte[] plaintextBytes;
 
             if (messageType == CiphertextMessage.PREKEY_TYPE) {
                 PreKeySignalMessage message = new PreKeySignalMessage(serialized);
-                plaintextBytes = cipher.decrypt(message);
+                plaintextBytes = decryptWithIdentityHeal(store, peerUserId, ourUserId, peerDev, localDev, message);
             } else if (messageType == CiphertextMessage.WHISPER_TYPE) {
                 SignalMessage message = new SignalMessage(serialized);
-                plaintextBytes = cipher.decrypt(message);
+                plaintextBytes = decryptWithIdentityHeal(store, peerUserId, ourUserId, peerDev, localDev, message);
             } else {
                 call.reject("unsupported signal_message_type: " + messageType);
                 return;
             }
 
             store.persistSessions();
-            store.trackSessionPeer(peerUserId);
+            store.trackSessionPeer(peerUserId, peerDev);
 
             JSObject ret = new JSObject();
             ret.put("plaintext", new String(plaintextBytes, StandardCharsets.UTF_8));
@@ -417,6 +462,46 @@ public class SscLibsignalPlugin extends Plugin {
         }
     }
 
+    private byte[] decryptWithIdentityHeal(
+            SscSignalStore store,
+            String peerUserId,
+            String ourUserId,
+            int peerDeviceId,
+            int localDeviceId,
+            PreKeySignalMessage message
+    ) throws Exception {
+        InMemorySignalProtocolStore protocolStore = store.getProtocolStore();
+        SignalProtocolAddress remoteAddress = new SignalProtocolAddress(peerUserId, peerDeviceId);
+        SessionCipher cipher = buildCipher(store, peerUserId, ourUserId, peerDeviceId, localDeviceId);
+        try {
+            return cipher.decrypt(message);
+        } catch (org.signal.libsignal.protocol.UntrustedIdentityException identityErr) {
+            store.clearPeerIdentity(peerUserId, peerDeviceId);
+            protocolStore.saveIdentity(remoteAddress, message.getIdentityKey());
+            store.persistPeerIdentity(peerUserId, peerDeviceId, message.getIdentityKey());
+            cipher = buildCipher(store, peerUserId, ourUserId, peerDeviceId, localDeviceId);
+            return cipher.decrypt(message);
+        }
+    }
+
+    private byte[] decryptWithIdentityHeal(
+            SscSignalStore store,
+            String peerUserId,
+            String ourUserId,
+            int peerDeviceId,
+            int localDeviceId,
+            SignalMessage message
+    ) throws Exception {
+        SessionCipher cipher = buildCipher(store, peerUserId, ourUserId, peerDeviceId, localDeviceId);
+        try {
+            return cipher.decrypt(message);
+        } catch (org.signal.libsignal.protocol.UntrustedIdentityException identityErr) {
+            store.resetPeerSignalState(peerUserId);
+            cipher = buildCipher(store, peerUserId, ourUserId, peerDeviceId, localDeviceId);
+            return cipher.decrypt(message);
+        }
+    }
+
     private SessionCipher buildCipher(
             SscSignalStore store,
             String peerUserId,
@@ -484,6 +569,24 @@ public class SscLibsignalPlugin extends Plugin {
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("deleteSession failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void resetPeerSignalState(PluginCall call) {
+        try {
+            String peerUserId = call.getString("peer_user_id");
+            if (peerUserId == null || peerUserId.isEmpty()) {
+                call.reject("peer_user_id required");
+                return;
+            }
+            SscSignalStore store = SscSignalStore.getInstance(getContext());
+            store.resetPeerSignalState(peerUserId, peerDeviceId(call));
+            JSObject ret = new JSObject();
+            ret.put("reset", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("resetPeerSignalState failed: " + e.getMessage(), e);
         }
     }
 

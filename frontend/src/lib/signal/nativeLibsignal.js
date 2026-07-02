@@ -56,15 +56,18 @@ export async function hasSignalSession(peerUserId, peerDeviceId = 1) {
   return client.hasSession({ peer_user_id: peerUserId, peer_device_id: peerDeviceId });
 }
 
-export async function establishSignalSession(peerUserId, bundle, ourUserId) {
+export async function establishSignalSession(peerUserId, bundle, ourUserId, options = {}) {
   const client = getLibsignalClient();
   if (!client) {
     throw new Error('Signal sessions require an installed SSC app (Android, iOS, or desktop)');
   }
+  const peerDeviceId = options.peerDeviceId ?? bundle?.device_id ?? 1;
   return client.establishSession({
     peer_user_id: peerUserId,
     our_user_id: ourUserId,
+    peer_device_id: peerDeviceId,
     bundle,
+    force: !!options.force,
   });
 }
 
@@ -162,6 +165,23 @@ export async function deleteSignalSession(peerUserId) {
   const client = getLibsignalClient();
   if (!client?.deleteSession) return { deleted: false, reason: 'unavailable' };
   return client.deleteSession({ peer_user_id: peerUserId });
+}
+
+/** Clear peer session + stale identity trust before re-establishing X3DH. */
+export async function resetPeerSignalState(peerUserId, peerDeviceId = 1) {
+  const client = getLibsignalClient();
+  if (!client?.resetPeerSignalState) return { reset: false, reason: 'unavailable' };
+  return client.resetPeerSignalState({ peer_user_id: peerUserId, peer_device_id: peerDeviceId });
+}
+
+export async function trustPeerIdentityFromBundle(peerUserId, bundle, peerDeviceId = 1) {
+  const client = getLibsignalClient();
+  if (!client?.trustPeerIdentityFromBundle) return { trusted: false, reason: 'unavailable' };
+  return client.trustPeerIdentityFromBundle({
+    peer_user_id: peerUserId,
+    peer_device_id: peerDeviceId,
+    bundle,
+  });
 }
 
 /** Drop peer sessions only — used when server identity no longer matches this device. */

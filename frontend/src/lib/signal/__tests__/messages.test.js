@@ -30,7 +30,7 @@ describe('encryptSignalText', () => {
   });
 
   it('retries with forceRefreshSignalSession on session-not-found error', async () => {
-    const sessionErr = new Error('session with peer-1.1 not found');
+    const sessionErr = new Error('session with peer-1.1 not found : encrypt_message');
     nativeEncryptSignalMessage
       .mockRejectedValueOnce(sessionErr)
       .mockResolvedValueOnce({ ciphertext: 'ct2', signal_message_type: 1 });
@@ -40,6 +40,15 @@ describe('encryptSignalText', () => {
     expect(forceRefreshSignalSession).toHaveBeenCalledWith('peer-1', 'me-1', 1);
     expect(nativeEncryptSignalMessage).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ ciphertext: 'ct2', signal_message_type: 1 });
+  });
+
+  it('retries twice before giving up on persistent session-not-found errors', async () => {
+    const sessionErr = new Error('session with peer-1.1 not found : encrypt_message');
+    nativeEncryptSignalMessage.mockRejectedValue(sessionErr);
+
+    await expect(encryptSignalText('peer-1', 'me-1', 'hello')).rejects.toThrow('encrypt_message');
+    expect(forceRefreshSignalSession).toHaveBeenCalledTimes(2);
+    expect(nativeEncryptSignalMessage).toHaveBeenCalledTimes(3);
   });
 
   it('re-throws if error is not session-not-found', async () => {

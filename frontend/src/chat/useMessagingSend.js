@@ -38,6 +38,8 @@ import {
 import { captureCurrentLocation } from '../lib/locationShare';
 import { canPostInGroup } from '../lib/groupRoles';
 import { sealedSenderEnabled, sendSealedDirectMessage } from '../lib/signal/sealedSender';
+import { cacheSentPlaintext } from '../lib/sentPlaintextCache';
+import { recordDiagnostic } from '../lib/diagnosticLog';
 
 export function useMessagingSend({
   activeConv,
@@ -198,27 +200,42 @@ export function useMessagingSend({
       }
 
       if (useSignal && !isGroup) {
+        let sealedOk = false;
         if (sealedSenderEnabled(user)) {
-          let bodyFields;
-          if (attachmentId && attachmentEnc?.signal_meta) {
-            const { buildSignalAttachmentEnvelope } = await import('../lib/signal/attachments');
-            bodyFields = {
-              attachment_envelope: buildSignalAttachmentEnvelope(attachmentEnc.signal_meta),
-            };
-          } else {
-            bodyFields = { text: text || '' };
+          try {
+            let bodyFields;
+            if (attachmentId && attachmentEnc?.signal_meta) {
+              const { buildSignalAttachmentEnvelope } = await import('../lib/signal/attachments');
+              bodyFields = {
+                attachment_envelope: buildSignalAttachmentEnvelope(attachmentEnc.signal_meta),
+              };
+            } else {
+              bodyFields = { text: text || '' };
+            }
+            const sealedResult = await sendSealedDirectMessage({
+              conversationId: activeId,
+              peerUserId: peer.user_id,
+              ourUserId: user.user_id,
+              bodyFields,
+              messageType: type,
+              attachmentId: attachmentId || undefined,
+              attachmentContentType: attachmentEnc?.content_type,
+              replyToMessageId: replyToMessageId || undefined,
+            });
+            sealedOk = true;
+            if (sealedResult?.message_id && text) {
+              cacheSentPlaintext(sealedResult.message_id, text);
+            }
+          } catch (sealedErr) {
+            recordDiagnostic({
+              category: 'messaging_gate',
+              source: 'useMessagingSend/sealedSender',
+              message: `Sealed-sender send failed, falling back to authenticated encrypt: ${sealedErr?.message || sealedErr}`,
+              detail: { conversationId: activeId, status: sealedErr?.response?.status },
+            });
           }
-          await sendSealedDirectMessage({
-            conversationId: activeId,
-            peerUserId: peer.user_id,
-            ourUserId: user.user_id,
-            bodyFields,
-            messageType: type,
-            attachmentId: attachmentId || undefined,
-            attachmentContentType: attachmentEnc?.content_type,
-            replyToMessageId: replyToMessageId || undefined,
-          });
-        } else {
+        }
+        if (!sealedOk) {
           let enc;
           if (attachmentId && attachmentEnc?.signal_meta) {
             enc = await encryptSignalAttachment(peer.user_id, user.user_id, attachmentEnc.signal_meta);
@@ -226,7 +243,7 @@ export function useMessagingSend({
             const { encryptSignalTextForPeerDevices } = await import('../lib/signal/multiDeviceMessaging');
             enc = await encryptSignalTextForPeerDevices(peer.user_id, user.user_id, text || '');
           }
-          await api.post('/messages', {
+          const { data: authResult } = await api.post('/messages', {
             conversation_id: activeId,
             protocol: ProtocolVersion.SIGNAL_V1,
             ciphertext: enc.ciphertext,
@@ -237,6 +254,9 @@ export function useMessagingSend({
             attachment_content_type: attachmentEnc?.content_type,
             reply_to_message_id: replyToMessageId || undefined,
           });
+          if (authResult?.message_id && text) {
+            cacheSentPlaintext(authResult.message_id, text);
+          }
         }
         setDraft('');
         setReplyTo?.(null);

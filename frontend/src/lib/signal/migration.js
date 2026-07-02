@@ -23,7 +23,12 @@ import {
   parseSealedPlaintext,
 } from './sealedSender';
 import { isNativeLibsignalAvailable } from './nativeLibsignal';
-import { usesSignalOnlyMessaging } from './installedMessaging';
+import { usesSignalOnlyMessaging } from './installedOnly';
+import {
+  cacheReceivedPlaintext,
+  getReceivedPlaintext,
+  isDuplicateDecryptError,
+} from '../receivedPlaintextCache';
 
 export function getMessageProtocol(msg) {
   return msg?.protocol || ProtocolVersion.LEGACY_RSA;
@@ -35,47 +40,65 @@ export function isLegacyRsaMessage(msg) {
 
 /** Unified dual-read decrypt — legacy_rsa (vault) or signal_v1 (native store). */
 export async function decryptMessageBody(msg, { myUserId, peerUserId, privateKey }) {
+  if (msg?.message_id) {
+    const cached = getReceivedPlaintext(msg.message_id);
+    if (cached != null) return cached;
+  }
   if (!msg?.ciphertext) {
     throw new Error('NO_CIPHERTEXT');
   }
-  if (isSignalGroupV1Message(msg)) {
-    const senderId = msg.sender_id;
-    if (!senderId || !myUserId) throw new Error('NO_KEY');
-    const plaintext = await decryptGroupText(senderId, msg);
-    if (isSignalAttachmentEnvelope(plaintext)) {
-      const meta = parseSignalAttachmentEnvelope(plaintext);
-      return meta?.caption ?? '';
+  const remember = (plaintext) => {
+    if (msg?.message_id && plaintext != null) {
+      cacheReceivedPlaintext(msg.message_id, plaintext);
     }
     return plaintext;
-  }
-  if (isSignalV1Message(msg)) {
-    let remoteId = signalRemoteUserId(msg, { myUserId, peerUserId });
-    if (!remoteId && msg?.sealed_sender) {
-      remoteId = peerUserId;
-    }
-    if (!remoteId || !myUserId) throw new Error('NO_KEY');
-    const { decryptSignalTextForLocalDevice } = await import('./multiDeviceMessaging');
-    let plaintext = await decryptSignalTextForLocalDevice(msg, remoteId, myUserId);
-    const sealed = parseSealedPlaintext(plaintext);
-    if (sealed) {
-      cacheResolvedSender(msg.message_id, sealed.sender_user_id);
-      const inner = sealed.body || {};
-      if (typeof inner.text === 'string') {
-        plaintext = inner.text;
-      } else if (typeof inner.attachment_envelope === 'string') {
-        plaintext = inner.attachment_envelope;
+  };
+  try {
+    if (isSignalGroupV1Message(msg)) {
+      const senderId = msg.sender_id;
+      if (!senderId || !myUserId) throw new Error('NO_KEY');
+      const plaintext = await decryptGroupText(senderId, msg);
+      if (isSignalAttachmentEnvelope(plaintext)) {
+        const meta = parseSignalAttachmentEnvelope(plaintext);
+        return remember(meta?.caption ?? '');
       }
+      return remember(plaintext);
     }
-    if (isSignalAttachmentEnvelope(plaintext)) {
-      const meta = parseSignalAttachmentEnvelope(plaintext);
-      return meta?.caption ?? '';
+    if (isSignalV1Message(msg)) {
+      let remoteId = signalRemoteUserId(msg, { myUserId, peerUserId });
+      if (!remoteId && msg?.sealed_sender) {
+        remoteId = peerUserId;
+      }
+      if (!remoteId || !myUserId) throw new Error('NO_KEY');
+      const { decryptSignalTextForLocalDevice } = await import('./multiDeviceMessaging');
+      let plaintext = await decryptSignalTextForLocalDevice(msg, remoteId, myUserId);
+      const sealed = parseSealedPlaintext(plaintext);
+      if (sealed) {
+        cacheResolvedSender(msg.message_id, sealed.sender_user_id);
+        const inner = sealed.body || {};
+        if (typeof inner.text === 'string') {
+          plaintext = inner.text;
+        } else if (typeof inner.attachment_envelope === 'string') {
+          plaintext = inner.attachment_envelope;
+        }
+      }
+      if (isSignalAttachmentEnvelope(plaintext)) {
+        const meta = parseSignalAttachmentEnvelope(plaintext);
+        return remember(meta?.caption ?? '');
+      }
+      return remember(plaintext);
     }
-    return plaintext;
+    if (!privateKey) throw new Error('VAULT_LOCKED');
+    const myKey = msg.encrypted_keys?.[myUserId];
+    if (!myKey || !msg.iv) throw new Error('NO_KEY');
+    return remember(await decryptMessage(privateKey, msg.ciphertext, msg.iv, myKey));
+  } catch (err) {
+    if (msg?.message_id && isDuplicateDecryptError(err)) {
+      const cached = getReceivedPlaintext(msg.message_id);
+      if (cached != null) return cached;
+    }
+    throw err;
   }
-  if (!privateKey) throw new Error('VAULT_LOCKED');
-  const myKey = msg.encrypted_keys?.[myUserId];
-  if (!myKey || !msg.iv) throw new Error('NO_KEY');
-  return decryptMessage(privateKey, msg.ciphertext, msg.iv, myKey);
 }
 
 export async function resolveOutgoingEncryptionHint({ isGroup, peer, user, members }) {

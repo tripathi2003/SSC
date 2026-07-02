@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocale } from '../context/LocaleContext';
 import { Translate, Paperclip, Check, Checks, DownloadSimple } from '@phosphor-icons/react';
 import { decryptMessageBody } from '../lib/signal/migration';
+import { isSignalV1Message } from '../lib/signal/messages';
 import { isSignalV1AttachmentMessage } from '../lib/signal/attachments';
 import { translateMessageText } from '../lib/translation/translateClient';
 import { formatFileSize, filenameFromCaption } from '../lib/attachmentUtils';
@@ -19,6 +20,10 @@ import VoiceNotePlayer from './VoiceNotePlayer';
 import VideoNotePlayer from './VideoNotePlayer';
 import PollMessage from './PollMessage';
 import LocationMessage from './LocationMessage';
+import { recordDiagnostic } from '../lib/diagnosticLog';
+import { subscribeMemoryWipe } from '../lib/memoryWipe';
+import { getSentPlaintext } from '../lib/sentPlaintextCache';
+import { getReceivedPlaintext } from '../lib/receivedPlaintextCache';
 
 function HighlightedText({ text, query }) {
   const parts = splitTextForHighlight(text, query);
@@ -95,6 +100,22 @@ export default function Message({
       setDecrypting(false);
       return undefined;
     }
+    const inboundCached = getReceivedPlaintext(msg.message_id);
+    if (inboundCached != null) {
+      setPlaintext(inboundCached);
+      setError(null);
+      setVaultLocked(false);
+      setDecrypting(false);
+      return undefined;
+    }
+    if (isMine && isSignalV1Message(msg)) {
+      const cached = getSentPlaintext(msg.message_id, msg.ciphertext);
+      setPlaintext(cached);
+      setError(null);
+      setVaultLocked(false);
+      setDecrypting(false);
+      return undefined;
+    }
     let mounted = true;
     setDecrypting(true);
     const slowTimer = setTimeout(() => {
@@ -122,13 +143,24 @@ export default function Message({
         setVaultLocked(false);
         if (code === 'NO_KEY') setError('NO_KEY');
         else setError('DECRYPT_FAIL');
+        recordDiagnostic({
+          category: 'libsignal',
+          source: 'Message.decrypt',
+          message: code || 'DECRYPT_FAIL',
+          detail: {
+            message_id: msg?.message_id,
+            conversation_id: msg?.conversation_id,
+            protocol: msg?.protocol,
+            signal_message_type: msg?.signal_message_type,
+          },
+        });
       }
     })();
     return () => {
       mounted = false;
       clearTimeout(slowTimer);
     };
-  }, [msg, myUserId, privateKey, peerUserId, decryptAttempt, deleted]);
+  }, [msg, myUserId, privateKey, peerUserId, decryptAttempt, deleted, isMine]);
 
   const sameLanguage = Boolean(
     sourceLang && targetLang && sourceLang.toLowerCase() === targetLang.toLowerCase(),
@@ -235,6 +267,9 @@ export default function Message({
         )}
         {!deleted && vaultLocked && (
           <span className="text-xs text-[#FF9500]">{t('messageVaultLocked')}</span>
+        )}
+        {!deleted && isMine && isSignalV1Message(msg) && !error && !decrypting && plaintext === null && (
+          <span className="text-xs text-[#A1A1AA] italic">{t('encryptedMessage')}</span>
         )}
         {!deleted && !error && !vaultLocked && decrypting && plaintext === null && (
           <span className="text-xs text-[#A1A1AA]">{t('messageDecrypting')}</span>

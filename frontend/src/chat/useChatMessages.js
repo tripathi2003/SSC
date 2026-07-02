@@ -41,7 +41,9 @@ export function useChatMessages({
           /* skip undecryptable */
         }
       }
-      if (!cancelled) setDecryptedBodies(next);
+      if (!cancelled) {
+        setDecryptedBodies((prev) => ({ ...prev, ...next }));
+      }
     })();
     return () => { cancelled = true; };
   }, [messages, privateKey, user?.user_id, peer?.user_id]);

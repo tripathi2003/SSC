@@ -1,6 +1,6 @@
 {
   "name": "ssc-desktop",
-  "version": "1.0.12",
+  "version": "1.0.20",
   "description": "SSC desktop client — Windows + Mac with libsignal",
   "private": true,
   "type": "module",
@@ -55,7 +55,7 @@
       {
         "from": "../build",
         "to": "renderer",
-        "filter": ["**/*", "!**/*.map"]
+        "filter": ["**/*", "!**/*.map", "!downloads/**"]
       },
       {
         "from": "signing.config.json",

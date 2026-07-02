@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 $Apk = "C:\Users\smash\Desktop\SSC\APK\SSC-app-release.apk"
 $AppId = "1:814078411789:android:84b1543debc1a7afc68144"
-$Version = "1.0.18"
+$Version = "1.0.19"
 
 if (-not (Test-Path $Apk)) {
     throw "APK not found: $Apk - run SSC-BUILD-APK.bat first"

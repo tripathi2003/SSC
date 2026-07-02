@@ -512,7 +512,8 @@ public class SscLibsignalPlugin extends Plugin {
         InMemorySignalProtocolStore protocolStore = store.getProtocolStore();
         SignalProtocolAddress remoteAddress = new SignalProtocolAddress(peerUserId, peerDeviceId);
         SignalProtocolAddress localAddress = new SignalProtocolAddress(ourUserId, localDeviceId);
-        return new SessionCipher(protocolStore, remoteAddress, localAddress);
+        // libsignal 0.96 SessionCipher(store, localAddress, remoteAddress) — not (remote, local).
+        return new SessionCipher(protocolStore, localAddress, remoteAddress);
     }
 
     private PreKeyBundle buildPreKeyBundle(JSObject obj) throws Exception {

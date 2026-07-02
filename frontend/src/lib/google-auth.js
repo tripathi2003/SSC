@@ -4,6 +4,7 @@
 import { api, API } from './api';
 import { openOAuthUrl } from './oauthBrowser';
 import { isElectronApp, isNativeApp } from './platform';
+import { bootstrapSessionFromDevice, getSessionToken } from './sessionStore';
 
 export async function fetchGoogleConfig() {
   try {
@@ -20,19 +21,33 @@ export async function completeGoogleAuth(
   { loginWithToken, navigate, refreshUser },
 ) {
   await loginWithToken(token, user);
-  const fresh = refreshUser ? await refreshUser() : user;
-  const resolved = fresh || user;
-  if (needs_username || !resolved?.username || !resolved?.public_key) {
+  const needsSetup = needs_username || !user?.username || !user?.public_key;
+  if (needsSetup) {
     navigate('/setup', { replace: true });
     return;
   }
   navigate('/chat', { replace: true });
+  if (refreshUser) {
+    refreshUser().catch(() => {});
+  }
 }
 
 function oauthPlatform() {
   if (isNativeApp()) return 'native';
   if (isElectronApp()) return 'desktop';
   return null;
+}
+
+/** Resume persisted session before opening OAuth (fixes #53 cold-start). */
+export async function tryResumePersistedSession(refreshUser) {
+  await bootstrapSessionFromDevice();
+  if (!getSessionToken() || !refreshUser) return null;
+  try {
+    const user = await refreshUser();
+    return user?.user_id ? user : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Installed: full-page OAuth inside the app shell (no external browser). */
@@ -61,6 +76,11 @@ export async function signInWithGoogle({ loginWithToken, navigate, refreshUser, 
 
   onBusy?.(true);
   try {
+    const resumed = await tryResumePersistedSession(refreshUser);
+    if (resumed) {
+      navigate('/chat', { replace: true });
+      return resumed;
+    }
     await signInWithGoogleInstalled();
     return null;
   } catch (e) {

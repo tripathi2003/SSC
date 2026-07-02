@@ -13,6 +13,7 @@ import {
   removeHardwareSecret,
   setHardwareSecret,
 } from '../hardwareSecretStore';
+import { isNativeApp } from '../platform';
 
 global.crypto = webcrypto;
 global.TextEncoder = TextEncoder;
@@ -23,6 +24,10 @@ jest.mock('../hardwareSecretStore', () => ({
   getHardwareSecret: jest.fn(async () => null),
   setHardwareSecret: jest.fn(async () => false),
   removeHardwareSecret: jest.fn(async () => {}),
+}));
+
+jest.mock('../platform', () => ({
+  isNativeApp: jest.fn(() => false),
 }));
 
 const LEGACY_KEY_B64 = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
@@ -104,5 +109,15 @@ describe('deviceWrapCrypto', () => {
     await clearDeviceWrapSecret();
     expect(removeHardwareSecret).toHaveBeenCalledWith(DEVICE_WRAP_KEY);
     expect(localStorage.getItem(DEVICE_WRAP_KEY)).toBeNull();
+  });
+
+  it('keeps localStorage backup on native after hardware migration', async () => {
+    isNativeApp.mockReturnValue(true);
+    mockHardwareBacking();
+    localStorage.setItem(DEVICE_WRAP_KEY, LEGACY_KEY_B64);
+
+    await wrapDeviceSecret('native-backup');
+    expect(setHardwareSecret).toHaveBeenCalledWith(DEVICE_WRAP_KEY, LEGACY_KEY_B64);
+    expect(localStorage.getItem(DEVICE_WRAP_KEY)).toBe(LEGACY_KEY_B64);
   });
 });

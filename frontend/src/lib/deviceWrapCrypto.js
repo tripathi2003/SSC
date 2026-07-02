@@ -8,8 +8,12 @@ import {
   removeHardwareSecret,
   setHardwareSecret,
 } from './hardwareSecretStore';
+import { isNativeApp } from './platform';
 
 export const DEVICE_WRAP_KEY = 'ssc_device_wrap_secret';
+const NATIVE_SESSION_WRAP_KEY = 'ssc_session_wrap_enc';
+const HARDWARE_READ_RETRIES = 8;
+const HARDWARE_READ_RETRY_MS = 150;
 
 function toB64(bytes) {
   return btoa(String.fromCharCode(...new Uint8Array(bytes)));
@@ -19,11 +23,33 @@ function fromB64(b64s) {
   return Uint8Array.from(atob(b64s), (c) => c.charCodeAt(0));
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function hasPersistedSessionWrap() {
+  return typeof localStorage !== 'undefined'
+    && !!localStorage.getItem(NATIVE_SESSION_WRAP_KEY);
+}
+
+async function readHardwareWrapKeyWithRetry() {
+  for (let attempt = 1; attempt <= HARDWARE_READ_RETRIES; attempt += 1) {
+    const stored = await getHardwareSecret(DEVICE_WRAP_KEY);
+    if (stored) return stored;
+    if (attempt < HARDWARE_READ_RETRIES) {
+      await sleep(HARDWARE_READ_RETRY_MS * attempt);
+    }
+  }
+  return null;
+}
+
 async function readWrapKeyMaterial() {
   if (typeof crypto?.subtle === 'undefined') return null;
   const hw = await isHardwareSecretStoreAvailable();
   if (hw) {
-    const stored = await getHardwareSecret(DEVICE_WRAP_KEY);
+    const stored = await readHardwareWrapKeyWithRetry();
     if (stored) return stored;
     if (typeof localStorage !== 'undefined') {
       const legacy = localStorage.getItem(DEVICE_WRAP_KEY);
@@ -49,10 +75,15 @@ export async function migrateDeviceWrapKeyToHardware() {
   if (!legacy) return false;
   const existing = await getHardwareSecret(DEVICE_WRAP_KEY);
   if (existing) {
-    localStorage.removeItem(DEVICE_WRAP_KEY);
+    if (!isNativeApp()) {
+      localStorage.removeItem(DEVICE_WRAP_KEY);
+    } else {
+      localStorage.setItem(DEVICE_WRAP_KEY, existing);
+    }
     return true;
   }
   await writeWrapKeyMaterial(legacy);
+  if (isNativeApp()) return true;
   return !localStorage.getItem(DEVICE_WRAP_KEY);
 }
 
@@ -61,8 +92,16 @@ async function writeWrapKeyMaterial(material) {
   if (hw) {
     const ok = await setHardwareSecret(DEVICE_WRAP_KEY, material);
     if (ok) {
-      if (typeof localStorage !== 'undefined') localStorage.removeItem(DEVICE_WRAP_KEY);
-      return;
+      const verified = await readHardwareWrapKeyWithRetry();
+      if (verified === material && typeof localStorage !== 'undefined') {
+        // Android Keystore can lag on cold start — keep localStorage fallback on native.
+        if (isNativeApp()) {
+          localStorage.setItem(DEVICE_WRAP_KEY, material);
+        } else {
+          localStorage.removeItem(DEVICE_WRAP_KEY);
+        }
+        return;
+      }
     }
   }
   if (typeof localStorage !== 'undefined') {
@@ -75,6 +114,9 @@ export async function getDeviceWrapKey() {
   if (typeof crypto?.subtle === 'undefined') return null;
   let stored = await readWrapKeyMaterial();
   if (!stored) {
+    if (hasPersistedSessionWrap()) {
+      return null;
+    }
     const raw = crypto.getRandomValues(new Uint8Array(32));
     stored = toB64(raw);
     await writeWrapKeyMaterial(stored);

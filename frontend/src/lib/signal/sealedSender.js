@@ -4,6 +4,7 @@
 import { api } from '../api';
 import { isInstalledClient } from '../platform';
 import { privacyFromUser } from '../privacySettings';
+import { recordDiagnostic } from '../diagnosticLog';
 import { ProtocolVersion } from './constants';
 import { getLocalDeviceId } from './deviceStore';
 import { encryptSignalTextForPeerDevices } from './multiDeviceMessaging';
@@ -128,7 +129,18 @@ export async function sendSealedDirectMessage({
   attachmentContentType,
   replyToMessageId,
 }) {
-  const tokenDoc = await mintSealedDeliveryToken(conversationId);
+  let tokenDoc;
+  try {
+    tokenDoc = await mintSealedDeliveryToken(conversationId);
+  } catch (tokenErr) {
+    recordDiagnostic({
+      category: 'libsignal',
+      source: 'sealedSender/mintToken',
+      message: `Failed to mint sealed delivery token: ${tokenErr?.message || tokenErr}`,
+      detail: { conversationId, status: tokenErr?.response?.status },
+    });
+    throw tokenErr;
+  }
   const enc = await encryptSealedSignalPayload(peerUserId, ourUserId, bodyFields);
   return postSealedMessage({
     token: tokenDoc.token,

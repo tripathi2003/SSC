@@ -1,6 +1,7 @@
 """Q.52 — sealed sender delivery tokens and message storage."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timedelta, timezone
 
 from core.sealed_sender_tokens import consume_delivery_token, mint_delivery_token
 
@@ -83,3 +84,63 @@ async def test_send_sealed_message_stores_no_sender_id():
     inserted = mock_coll.insert_one.call_args[0][0]
     assert inserted["sealed_sender"] is True
     assert inserted.get("sender_id") is None
+
+
+@pytest.mark.asyncio
+async def test_expired_delivery_token_returns_none():
+    """Expired sealed-sender token must not authorize a send — forces fallback to authenticated path."""
+    expired_time = datetime.now(timezone.utc) - timedelta(seconds=300)
+
+    stored = {
+        "token_hash": None,
+        "conversation_id": "conv-1",
+        "issued_by": "user-a",
+        "created_at": expired_time - timedelta(seconds=120),
+        "expires_at": expired_time,
+        "consumed_at": None,
+    }
+
+    async def fake_find_one(query):
+        if query.get("token_hash"):
+            stored["token_hash"] = query["token_hash"]
+            return {**stored}
+        return None
+
+    class FakeTokens:
+        insert_one = AsyncMock()
+        find_one = AsyncMock(side_effect=fake_find_one)
+        update_one = AsyncMock()
+
+    with patch("core.sealed_sender_tokens.db") as mock_db:
+        mock_db.__getitem__ = lambda _self, key: FakeTokens() if key == "sealed_delivery_tokens" else MagicMock()
+        result = await consume_delivery_token("some-expired-token", "conv-1")
+        assert result is None
+
+
+@pytest.mark.asyncio
+async def test_wrong_conversation_token_returns_none():
+    """Token for conversation A must not work on conversation B."""
+    stored = {
+        "token_hash": None,
+        "conversation_id": "conv-1",
+        "issued_by": "user-a",
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(seconds=120),
+        "consumed_at": None,
+    }
+
+    async def fake_find_one(query):
+        if query.get("token_hash"):
+            stored["token_hash"] = query["token_hash"]
+            return {**stored}
+        return None
+
+    class FakeTokens:
+        insert_one = AsyncMock()
+        find_one = AsyncMock(side_effect=fake_find_one)
+        update_one = AsyncMock()
+
+    with patch("core.sealed_sender_tokens.db") as mock_db:
+        mock_db.__getitem__ = lambda _self, key: FakeTokens() if key == "sealed_delivery_tokens" else MagicMock()
+        result = await consume_delivery_token("some-token", "conv-DIFFERENT")
+        assert result is None

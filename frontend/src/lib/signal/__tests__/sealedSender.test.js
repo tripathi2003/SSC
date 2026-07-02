@@ -8,6 +8,10 @@ jest.mock('../../platform', () => ({
   isInstalledClient: jest.fn(() => true),
 }));
 
+jest.mock('../../diagnosticLog', () => ({
+  recordDiagnostic: jest.fn(),
+}));
+
 jest.mock('../deviceStore', () => ({
   getLocalDeviceId: jest.fn(() => 1),
 }));
@@ -85,5 +89,33 @@ describe('sealedSender', () => {
       }),
       { skipAuth: true },
     );
+  });
+
+  it('sendSealedDirectMessage throws when token mint fails (triggers fallback in caller)', async () => {
+    api.post.mockRejectedValueOnce(new Error('Network error'));
+
+    await expect(
+      sendSealedDirectMessage({
+        conversationId: 'conv-1',
+        peerUserId: 'u_b',
+        ourUserId: 'u_a',
+        bodyFields: { text: 'hi' },
+      }),
+    ).rejects.toThrow('Network error');
+  });
+
+  it('sendSealedDirectMessage throws when post sealed fails (triggers fallback in caller)', async () => {
+    api.post
+      .mockResolvedValueOnce({ data: { token: 'tok', expires_in_sec: 120 } })
+      .mockRejectedValueOnce({ response: { status: 401, data: { detail: 'Invalid or expired delivery token' } } });
+
+    await expect(
+      sendSealedDirectMessage({
+        conversationId: 'conv-1',
+        peerUserId: 'u_b',
+        ourUserId: 'u_a',
+        bodyFields: { text: 'hi' },
+      }),
+    ).rejects.toBeDefined();
   });
 });

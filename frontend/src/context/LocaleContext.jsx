@@ -9,6 +9,7 @@ import {
   t as translate,
 } from '../lib/i18n';
 import { isInstalledClient } from '../lib/platform';
+import { recordDiagnostic } from '../lib/diagnosticLog';
 import { useAuth } from './AuthContext';
 
 const LocaleCtx = createContext(null);
@@ -30,7 +31,9 @@ export function LocaleProvider({ children }) {
     let cancelled = false;
     setLocaleLoading(true);
     loadLocalePack(locale)
-      .catch(() => {})
+      .catch((err) => {
+        recordDiagnostic({ category: 'bootstrap', source: 'LocaleContext/loadLocalePack', message: err?.message || 'locale pack load failed', detail: err });
+      })
       .finally(() => {
         if (!cancelled) setLocaleLoading(false);
       });

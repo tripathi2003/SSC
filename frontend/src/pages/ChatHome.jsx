@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { MagnifyingGlass, Plus, SignOut, Phone, VideoCamera, PaperPlaneTilt, Paperclip, ShieldCheck, Translate, X, UsersThree, Gear, Microphone, CaretLeft, CaretDown, CaretUp, PushPin, Images, FilmStrip, Smiley, ChartBar, MapPin, Megaphone } from '@phosphor-icons/react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { recordDiagnostic } from '../lib/diagnosticLog';
 
 
 import { subscribePush } from '../lib/push';
@@ -404,7 +405,9 @@ export default function ChatHome() {
     let cancelled = false;
     getTranslateModelDownloadStatus().then((status) => {
       if (!cancelled && status?.state) setTranslateModelDownload(status);
-    }).catch(() => {});
+    }).catch((err) => {
+      recordDiagnostic({ category: 'api', source: 'ChatHome/translateModelStatus', message: err?.message || 'translate model status failed', detail: err });
+    });
     return subscribeTranslateModelDownloadProgress((status) => {
       if (status?.state) setTranslateModelDownload(status);
     });
@@ -1049,8 +1052,12 @@ export default function ChatHome() {
   useEffect(() => {
     if (!user || pushRegisteredRef.current) return;
     pushRegisteredRef.current = true;
-    subscribePush().catch(() => {});
-    subscribeNativePush().catch(() => {});
+    subscribePush().catch((err) => {
+      recordDiagnostic({ category: 'api', source: 'ChatHome/subscribePush', message: err?.message || 'push subscription failed', detail: err });
+    });
+    subscribeNativePush().catch((err) => {
+      recordDiagnostic({ category: 'api', source: 'ChatHome/subscribeNativePush', message: err?.message || 'native push subscription failed', detail: err });
+    });
   }, [user]);
 
   useEffect(() => {
@@ -1075,7 +1082,9 @@ export default function ChatHome() {
         return { sent: false };
       }
     });
-    drainPendingNotificationReplies().catch(() => {});
+    drainPendingNotificationReplies().catch((err) => {
+      recordDiagnostic({ category: 'messaging', source: 'ChatHome/drainNotificationReplies', message: err?.message || 'drain notification replies failed', detail: err });
+    });
     return () => setNotificationReplyHandler(null);
   }, [user, privateKey, refreshUser, t]);
 
@@ -1097,7 +1106,9 @@ export default function ChatHome() {
   useEffect(() => {
     if (!isElectronApp()) return undefined;
     if (!user?.user_id) {
-      window.sscDesktop?.notifications?.setEnabled?.(false).catch(() => {});
+      window.sscDesktop?.notifications?.setEnabled?.(false).catch((err) => {
+        recordDiagnostic({ category: 'api', source: 'ChatHome/desktopNotifDisable', message: err?.message || 'disable desktop notifications failed', detail: err });
+      });
       return undefined;
     }
     syncDesktopNotificationPref();
@@ -1329,7 +1340,9 @@ export default function ChatHome() {
 
   useEffect(() => {
     if (!activeId) return;
-    prepareConversationChannel(activeId).catch(() => {});
+    prepareConversationChannel(activeId).catch((err) => {
+      recordDiagnostic({ category: 'messaging', source: 'ChatHome/prepareChannel', message: err?.message || 'prepareConversationChannel failed', detail: err });
+    });
   }, [activeId, prepareConversationChannel]);
 
   const renderSidebarConversationRow = useCallback((c) => {

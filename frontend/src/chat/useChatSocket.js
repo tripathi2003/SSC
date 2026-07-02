@@ -32,6 +32,7 @@ import { applyMessageEdited } from '../lib/messageEdit';
 import { applyMessageReactionUpdate } from '../lib/messageReactions';
 import { applyPollVoteUpdate } from '../lib/pollMessage';
 import { messageBelongsToTopic } from '../lib/groupTopics';
+import { recordDiagnostic } from '../lib/diagnosticLog';
 import {
   conversationPeerFromList,
   ingestMessagePlaintext,
@@ -90,7 +91,9 @@ export function useChatSocket({
                   ? peer?.user_id
                   : conversationPeerFromList(incoming.conversation_id, conversationsRef.current),
               }),
-            }).catch(() => {});
+            }).catch((err) => {
+              recordDiagnostic({ category: 'messaging', source: 'useChatSocket/ingestMessagePlaintext', message: err?.message || 'ingest failed', detail: err });
+            });
             if (
               incoming.conversation_id === activeId
               && messageBelongsToTopic(incoming, activeTopicIdRef?.current)
@@ -111,7 +114,9 @@ export function useChatSocket({
             myContacts: myContactsRef.current,
             formatGroupLabel: formatGroupConversationLabel,
             isPeerMutedFn: isPeerMuted,
-          }).catch(() => {});
+          }).catch((err) => {
+            recordDiagnostic({ category: 'messaging', source: 'useChatSocket/desktopNotify', message: err?.message || 'desktop notification failed', detail: err });
+          });
         } else if (data.type === 'typing') {
           if (
             typingIndicatorsEnabled(user)
@@ -201,7 +206,9 @@ export function useChatSocket({
           refreshContactsRosterRef.current?.({ full });
           if (data.type === 'friend-request' && data.from_username) {
             toast.message(t('friendRequestIncoming', { user: data.from_username }));
-            notifyDesktopFriendRequest(data.from_username).catch(() => {});
+            notifyDesktopFriendRequest(data.from_username).catch((err) => {
+              recordDiagnostic({ category: 'websocket', source: 'useChatSocket/friendRequestNotify', message: err?.message || 'friend request notification failed', detail: err });
+            });
           } else if (data.type === 'friend-accepted' && data.contact_username) {
             toast.success(t('friendRequestAcceptedBy', { user: data.contact_username }));
           }

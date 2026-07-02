@@ -11,6 +11,7 @@ import {
   ingestMessagesPlaintext,
 } from '../lib/messageIngest';
 import { subscribeMessagePlaintext } from '../lib/messagePlaintextStore';
+import { recordDiagnostic } from '../lib/diagnosticLog';
 
 export function useChatMessages({
   activeId,
@@ -96,12 +97,16 @@ export function useChatMessages({
             processIncomingSkdmMessage(msg, {
               myUserId: user?.user_id,
               peerUserId: peer?.user_id,
-            }).catch(() => {});
+            }).catch((err) => {
+              recordDiagnostic({ category: 'libsignal', source: 'useChatMessages/skdm', message: err?.message || 'SKDM processing failed', detail: err });
+            });
           } else if (msg?.message_type === STATUS_SKDM_MESSAGE_TYPE) {
             processIncomingStatusSkdmMessage(msg, {
               myUserId: user?.user_id,
               peerUserId: peer?.user_id,
-            }).catch(() => {});
+            }).catch((err) => {
+              recordDiagnostic({ category: 'libsignal', source: 'useChatMessages/statusSkdm', message: err?.message || 'status SKDM processing failed', detail: err });
+            });
           } else {
             visible.push(msg);
           }
@@ -121,7 +126,9 @@ export function useChatMessages({
     if (!activeId || messages.length === 0) return;
     const last = messages[messages.length - 1];
     if (last.sender_id !== user?.user_id && readReceiptsEnabled(user)) {
-      api.post('/messages/read', { conversation_id: activeId, up_to_message_id: last.message_id }).catch(() => {});
+      api.post('/messages/read', { conversation_id: activeId, up_to_message_id: last.message_id }).catch((err) => {
+        recordDiagnostic({ category: 'api', source: 'useChatMessages/readReceipt', message: err?.message || 'read receipt failed', detail: err });
+      });
     }
   }, [messages, activeId, user]);
 

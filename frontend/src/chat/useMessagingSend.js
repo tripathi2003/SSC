@@ -522,6 +522,7 @@ export function useMessagingSend({
     if (!session) return;
     voiceRecordingRef.current = null;
     session.stop();
+    // eslint-disable-next-line no-restricted-syntax -- intentional: user cancelled recording, result is discarded
     session.done.catch(() => {});
   }, []);
 
@@ -595,6 +596,7 @@ export function useMessagingSend({
     videoRecordingRef.current = null;
     onVideoRecordingEndRef.current?.();
     session.stop();
+    // eslint-disable-next-line no-restricted-syntax -- intentional: user cancelled recording, result is discarded
     session.done.catch(() => {});
   }, []);
 

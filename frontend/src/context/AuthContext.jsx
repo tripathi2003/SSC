@@ -37,8 +37,14 @@ const AuthCtx = createContext(null);
 
 function isGoogleOAuthReturn() {
   if (typeof window === 'undefined') return false;
+  const pathname = window.location.pathname || '';
+  const search = window.location.search || '';
   const hash = window.location.hash || '';
-  return hash.includes('/auth/google') && hash.includes('oauth_code=');
+
+  const isHashMatch = hash.includes('/auth/google') && hash.includes('oauth_code=');
+  const isPathMatch = pathname.includes('/auth/google') && search.includes('oauth_code=');
+
+  return isHashMatch || isPathMatch;
 }
 
 function notifyEncryptionBootstrapFailure(result) {

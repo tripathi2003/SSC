@@ -252,6 +252,9 @@ const STRINGS = {
     registerAgain: 'Register again',
     continueGoogle: 'Continue with Google',
     googleNotConfigured: 'Google sign-in (not configured)',
+    googleSignInFailedMissingCode: 'Google sign-in failed — missing code',
+    googleSignInFailedInvalidCode: 'Google sign-in failed — invalid code',
+    completingGoogleSignIn: 'COMPLETING GOOGLE SIGN-IN…',
     enter2fa: 'Enter your 6-digit 2FA code',
     totpCode: '2FA code',
 
@@ -1203,6 +1206,9 @@ const STRINGS = {
     registerAgain: 'Registrarse de nuevo',
     continueGoogle: 'Continuar con Google',
     googleNotConfigured: 'Google (no configurado)',
+    googleSignInFailedMissingCode: 'Error al iniciar sesión con Google — falta el código',
+    googleSignInFailedInvalidCode: 'Error al iniciar sesión con Google — código inválido',
+    completingGoogleSignIn: 'COMPLETANDO INICIO DE SESIÓN CON GOOGLE…',
     enter2fa: 'Introduce tu código 2FA de 6 dígitos',
     totpCode: 'Código 2FA',
 
@@ -2108,6 +2114,9 @@ const STRINGS = {
     registerAgain: 'Înregistrează-te din nou',
     continueGoogle: 'Continuă cu Google',
     googleNotConfigured: 'Google (neconfigurat)',
+    googleSignInFailedMissingCode: 'Autentificarea Google a eșuat — lipsește codul',
+    googleSignInFailedInvalidCode: 'Autentificarea Google a eșuat — cod invalid',
+    completingGoogleSignIn: 'SE COMPLETEAZĂ AUTENTIFICAREA GOOGLE…',
     enter2fa: 'Introdu codul 2FA din 6 cifre',
     totpCode: 'Cod 2FA',
 

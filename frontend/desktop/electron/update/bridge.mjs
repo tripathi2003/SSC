@@ -3,7 +3,9 @@
  * Q.61: verify Windows update signatures when signing.config.json says so.
  */
 import { app } from 'electron';
-import { autoUpdater } from 'electron-updater';
+import electronUpdater from 'electron-updater';
+
+const { autoUpdater } = electronUpdater;
 import { shouldVerifyWindowsUpdateSignature } from '../signingPolicy.mjs';
 
 const DEFAULT_FEED = 'https://www.supersecurechat.com/downloads/desktop/';

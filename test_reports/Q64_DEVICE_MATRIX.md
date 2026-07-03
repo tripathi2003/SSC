@@ -1,6 +1,6 @@
 # Q.64 — TASK J full device matrix sign-off
 
-**Release candidate:** `1.0.27` (update if different)
+**Release candidate:** `1.0.28` (update if different)
 
 **API:** `https://api.supersecurechat.com`
 

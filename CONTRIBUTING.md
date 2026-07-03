@@ -2,7 +2,7 @@
 
 SSC is **install-only** (Android APK + Windows/Mac desktop). Browser-tab chat is intentionally blocked. See `InstalledClientGate.jsx`.
 
-## Public beta testing (Android v1.0.27 · Windows v1.0.27)
+## Public beta testing (Android v1.0.28 · Windows v1.0.28)
 
 SSC is in **pre-release testing**, not a finished product.
 

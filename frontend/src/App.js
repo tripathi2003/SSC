@@ -77,6 +77,14 @@ function Protected({ children }) {
   }, [loading, user, refreshUser]);
 
   React.useEffect(() => {
+    if (identityBoot !== 'pending') return undefined;
+    const timeout = setTimeout(() => {
+      setIdentityBoot((state) => (state === 'pending' ? 'failed' : state));
+    }, 45000);
+    return () => clearTimeout(timeout);
+  }, [identityBoot]);
+
+  React.useEffect(() => {
     if (!user || !isInstalledClient() || identityBoot !== 'pending') return;
     let cancelled = false;
     bootstrapSignalIdentity(refreshUser).then(async (res) => {

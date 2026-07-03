@@ -18,6 +18,7 @@ import {
   isAppLockFeatureAvailable,
 } from '../lib/appLockStore';
 import { isInstalledClient } from '../lib/platform';
+import { withTimeout } from '../lib/asyncTimeout';
 
 const AppLockCtx = createContext(null);
 
@@ -36,7 +37,7 @@ export function AppLockProvider({ children }) {
       setLocked(false);
       return;
     }
-    const bio = await isBiometricUnlockAvailable();
+    const bio = await withTimeout(isBiometricUnlockAvailable(), 5000, false);
     setBiometricAvailable(bio);
     if (!user || loading) {
       setReady(true);
@@ -44,7 +45,7 @@ export function AppLockProvider({ children }) {
       return;
     }
     const enabled = isAppLockEnabled();
-    const pinSet = await hasAppLockPin();
+    const pinSet = await withTimeout(hasAppLockPin(), 5000, false);
     if (enabled && pinSet) {
       setLocked(true);
     } else {
@@ -54,8 +55,18 @@ export function AppLockProvider({ children }) {
   }, [user, loading]);
 
   useEffect(() => {
+    let cancelled = false;
     setReady(false);
-    refreshAvailability().catch(() => setReady(true));
+    const safety = setTimeout(() => {
+      if (!cancelled) setReady(true);
+    }, 8000);
+    refreshAvailability()
+      .catch(() => { if (!cancelled) setReady(true); })
+      .finally(() => clearTimeout(safety));
+    return () => {
+      cancelled = true;
+      clearTimeout(safety);
+    };
   }, [refreshAvailability]);
 
   useEffect(() => {

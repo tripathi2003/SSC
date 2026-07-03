@@ -10,6 +10,7 @@ import {
   setNativeLocalDeviceId,
 } from './nativeLibsignal';
 import { recordDiagnostic } from '../diagnosticLog';
+import { withTimeoutReject } from '../asyncTimeout';
 
 let uploadPromise = null;
 
@@ -58,41 +59,43 @@ export async function ensurePreKeysUploaded() {
 
   uploadPromise = (async () => {
     try {
-      const deviceId = getLocalDeviceId();
-      await setNativeLocalDeviceId(deviceId).catch((err) => {
-        recordDiagnostic({ category: 'libsignal', source: 'prekeys/setNativeLocalDeviceId', message: err?.message || 'setNativeLocalDeviceId failed', detail: err });
-      });
-      await registerLocalDevice().catch((err) => {
-        recordDiagnostic({ category: 'libsignal', source: 'prekeys/registerLocalDevice', message: err?.message || 'registerLocalDevice failed', detail: err });
-      });
-      const status = await fetchMyPreKeyStatus(deviceId);
-      const localBundle = await generatePreKeyBundle();
-      if (localBundle && !localBundle.device_id) {
-        localBundle.device_id = deviceId;
-      }
-      const mismatch = identityMismatch(status, localBundle);
-
-      if (status?.ready && !mismatch) {
-        return { uploaded: false, already: true };
-      }
-
-      if (mismatch) {
-        const clearResult = await clearAllSignalSessions();
-        if (clearResult?.cleared !== true) {
-          const detail = clearResult?.reason || 'clear_failed';
-          console.error('[SSC] clearAllSignalSessions failed after identity mismatch:', detail);
-          throw new Error(`session_clear_failed:${detail}`);
+      return await withTimeoutReject((async () => {
+        const deviceId = getLocalDeviceId();
+        await setNativeLocalDeviceId(deviceId).catch((err) => {
+          recordDiagnostic({ category: 'libsignal', source: 'prekeys/setNativeLocalDeviceId', message: err?.message || 'setNativeLocalDeviceId failed', detail: err });
+        });
+        await registerLocalDevice().catch((err) => {
+          recordDiagnostic({ category: 'libsignal', source: 'prekeys/registerLocalDevice', message: err?.message || 'registerLocalDevice failed', detail: err });
+        });
+        const status = await fetchMyPreKeyStatus(deviceId);
+        const localBundle = await generatePreKeyBundle();
+        if (localBundle && !localBundle.device_id) {
+          localBundle.device_id = deviceId;
         }
-        console.info('[SSC] Local Signal identity differs from server — re-uploading prekeys');
-      }
+        const mismatch = identityMismatch(status, localBundle);
 
-      const bundle = mismatch ? await generatePreKeyBundle() : localBundle;
-      const result = await uploadPreKeyBundle(bundle);
-      return {
-        uploaded: true,
-        result,
-        identity_rotated: mismatch,
-      };
+        if (status?.ready && !mismatch) {
+          return { uploaded: false, already: true };
+        }
+
+        if (mismatch) {
+          const clearResult = await clearAllSignalSessions();
+          if (clearResult?.cleared !== true) {
+            const detail = clearResult?.reason || 'clear_failed';
+            console.error('[SSC] clearAllSignalSessions failed after identity mismatch:', detail);
+            throw new Error(`session_clear_failed:${detail}`);
+          }
+          console.info('[SSC] Local Signal identity differs from server — re-uploading prekeys');
+        }
+
+        const bundle = mismatch ? await generatePreKeyBundle() : localBundle;
+        const result = await uploadPreKeyBundle(bundle);
+        return {
+          uploaded: true,
+          result,
+          identity_rotated: mismatch,
+        };
+      })(), 45000, 'prekey_upload_timeout');
     } finally {
       uploadPromise = null;
     }

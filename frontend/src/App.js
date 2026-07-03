@@ -25,7 +25,7 @@ import { getSessionToken } from './lib/sessionStore';
 import { hideNativeSplash } from './lib/capacitor-init';
 import { initCrashReportingFromStorage } from './lib/crashReporting';
 import { isElectronApp, isInstalledClient, prefersHashRouter } from './lib/platform';
-import { bootstrapSignalIdentity, userHasUnifiedIdentity } from './lib/signalIdentityBootstrap';
+
 import './App.css';
 
 /** Dismiss native splash after auth bootstrap + first paint. */
@@ -45,8 +45,6 @@ function Protected({ children }) {
   const { user, loading, refreshUser } = useAuth();
   const { t } = useLocale();
   const location = useLocation();
-  const [identityBoot, setIdentityBoot] = React.useState(isInstalledClient() ? 'pending' : 'done');
-  const [identityRetry, setIdentityRetry] = React.useState(0);
   const [sessionRecovery, setSessionRecovery] = React.useState('idle');
   const [desktopLibsignal, setDesktopLibsignal] = React.useState(
     isElectronApp() ? null : { ok: true },
@@ -58,12 +56,18 @@ function Protected({ children }) {
       return undefined;
     }
     let cancelled = false;
+    const safety = setTimeout(() => {
+      if (!cancelled) setDesktopLibsignal({ ok: true });
+    }, 5000);
     window.sscDesktop.libsignalInitStatus().then((status) => {
       if (!cancelled) setDesktopLibsignal(status);
     }).catch(() => {
       if (!cancelled) setDesktopLibsignal({ ok: false, error: 'status_unavailable' });
-    });
-    return () => { cancelled = true; };
+    }).finally(() => clearTimeout(safety));
+    return () => {
+      cancelled = true;
+      clearTimeout(safety);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -76,36 +80,7 @@ function Protected({ children }) {
     refreshUser().finally(() => setSessionRecovery('done'));
   }, [loading, user, refreshUser]);
 
-  React.useEffect(() => {
-    if (identityBoot !== 'pending') return undefined;
-    const timeout = setTimeout(() => {
-      setIdentityBoot((state) => (state === 'pending' ? 'failed' : state));
-    }, 45000);
-    return () => clearTimeout(timeout);
-  }, [identityBoot]);
-
-  React.useEffect(() => {
-    if (!user || !isInstalledClient() || identityBoot !== 'pending') return;
-    let cancelled = false;
-    bootstrapSignalIdentity(refreshUser).then(async (res) => {
-      if (cancelled) return;
-      if (res.ok) {
-        const refreshed = await refreshUser();
-        const ready = userHasUnifiedIdentity(refreshed || user);
-        setIdentityBoot(ready ? 'done' : 'failed');
-        return;
-      }
-      setIdentityBoot('failed');
-    });
-    return () => { cancelled = true; };
-  }, [user, refreshUser, identityBoot, identityRetry]);
-
-  const retrySignalIdentity = () => {
-    setIdentityBoot('pending');
-    setIdentityRetry((n) => n + 1);
-  };
-
-  if (loading || sessionRecovery === 'pending' || identityBoot === 'pending' || desktopLibsignal == null) {
+  if (loading || sessionRecovery === 'pending' || desktopLibsignal == null) {
     return <div className="mobile-shell flex items-center justify-center bg-[#0A0A0A] text-[#A1A1AA] font-mono text-xs safe-top safe-bottom">{t('initializing')}</div>;
   }
   if (isElectronApp() && desktopLibsignal && !desktopLibsignal.ok) {
@@ -121,20 +96,6 @@ function Protected({ children }) {
   }
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
   if (!user.username || !user.public_key) return <Navigate to="/setup" replace />;
-  if (isInstalledClient() && (identityBoot === 'failed' || !userHasUnifiedIdentity(user))) {
-    return (
-      <div className="mobile-shell flex flex-col items-center justify-center gap-4 bg-[#0A0A0A] text-[#A1A1AA] font-mono text-xs p-6 text-center safe-top safe-bottom">
-        <p>{t('signalIdentityRequired')}</p>
-        <button
-          type="button"
-          onClick={retrySignalIdentity}
-          className="px-4 py-2 rounded-md border border-[#27272A] text-[#F0F0F0] hover:bg-[#1A1A1A] transition text-sm"
-        >
-          {t('signalIdentityRetry')}
-        </button>
-      </div>
-    );
-  }
   return children;
 }
 

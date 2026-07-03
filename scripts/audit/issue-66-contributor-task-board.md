@@ -1,68 +1,74 @@
 ## Summary
 
-**Codebase audit — 2 July 2026** (post **v1.0.26** sealed-sender ingest fix).  
-This is the **master task board** for contributors. Pick a child issue (or section below), comment *"I'll take this"*, and open a PR referencing the issue number.
+**Contributor task board — updated 3 July 2026** (post Copilot PRs **#74–#80** on `main`).
 
-**Test status at audit time:** frontend Jest **404/404 pass**; backend pytest not re-run in this audit (CI runs on push).
+Pick a child issue below, comment *"I'll take this"*, and open a **draft PR**.
 
-**Not in scope of v1.0.26:** Cloud Run backend unchanged; fixes were frontend packaging + messaging ingest.
+**CI on `main`:** frontend Jest **404/404 pass** · `yarn build` green · backend pytest via Actions.
+
+**Important:** Fixes from PRs #77–#80 are on **`main`**, not yet in a new **APK/desktop installer** (still **v1.0.26** on site). Device QA needs a fresh build from current `main`.
 
 ---
 
-## P0 — Blocking beta / release confidence
+## P0 — Still open / needs device QA
 
-| # | Area | Task | Labels |
+| # | Area | Task | Status |
 |---|------|------|--------|
-| → | **Android** | Outbound 1:1 still fails on many devices (gate: `BOOTSTRAP_FAILED`, prekeys, session) — see `docs/ANDROID_MESSAGING_INVESTIGATION.md` | `android`, `libsignal`, `P0` |
-| #71 | **CI / Build** | No desktop (`yarn build:win`) or Android (`assembleRelease`) smoke in GitHub Actions | `tests`, `build` |
-| #70 | **Docs** | README, CONTRIBUTING, KNOWN_ISSUES, roadmaps still cite v1.0.12–1.0.18; downloads section says `SSC-Setup-1.0.18.exe` | `documentation` |
-| → | **Existing** | #53 Google sign-in after restart | |
-| → | **Existing** | #54 Inbound flash → decrypt error (re-test on **v1.0.26**; sealed `peerUserId=null` fixed in `bf15a2c`) | |
-| → | **Existing** | #62 Native Signal session persistence | |
-| → | **Existing** | #63 Sealed-sender outbound investigation (ingest path improved; send path still open) | |
+| **#53** | **Android** | Google sign-in *Not authenticated* after app restart | **Open** — not fixed by last night's PRs |
+| → | **Android** | Outbound 1:1 `BOOTSTRAP_FAILED` on some devices | **Code fixes merged** (#67, #68, #77, #80) — **needs APK rebuild + QA** |
+| **#71** | **CI** | Desktop + Android build smoke in GitHub Actions | **Open** |
+| **#70** | **Docs** | Version drift in README, KNOWN_ISSUES, roadmaps | **Open** |
 
 ---
 
-## P1 — High priority reliability & security
+## Closed last night (3 July) — re-test before assuming done
 
-| # | Area | Task |
-|---|------|------|
-| #72 | **Frontend** | Audit silent `.catch(() => {})` on messaging/auth/socket/ingest paths (`useChatSocket.js`, `AuthContext.jsx`, `useMessagingSend.js`, `ChatHome.jsx`) |
-| #73 | **Release** | Extend `scripts/sync_release_version.ps1` to bump docs (`KNOWN_ISSUES.md`, README download URLs, `device-matrix/`) |
-| → | **Existing** | #57 Group WebRTC `signal_message_type 7` rejected by server |
-| → | **Existing** | #58 Installed clients accept inbound cleartext WebRTC signaling |
-| → | **Existing** | #60 Desktop blocking UI when libsignal init fails |
-| → | **Existing** | #61 WS integration tests vs ws-ticket auth |
-| → | **Existing** | #55 Extend messaging gate tests for Android send failures |
+| Issue | Merged PR | What changed |
+|-------|-----------|--------------|
+| #63 sealed-sender outbound | **#77** | Sealed send failure → fallback to authenticated encrypt + diagnostics |
+| #54 inbound decrypt flash | **#78** | `sender_device_id` as `peerDeviceId` in multi-device decrypt |
+| #62 session persistence | **#80** | Atomic Android session persist (process-kill safe) |
+| #57 group WebRTC type 7 | **#79** | Backend + frontend tests for encrypted group call relay |
+| #72 silent `.catch()` | **#76** | `recordDiagnostic` on critical paths |
+| #73 release doc sync | **#75** | `sync_release_version.ps1` doc patching + dry-run |
 
----
-
-## P2 — Debt, polish, coverage
-
-- **Integration tests** skip without live API (`_server_up()` in many `backend/tests/test_ssc_*.py`).
-- **iOS / App Store** not shipped (`landingIosPending`, `IOS_CAPACITOR_CHARTER.md` deferred).
-- **Legacy RSA** dual-read paths still in tree (installed clients Signal-only; web legacy remains).
-- **Kotlin/R8 warnings** on APK build (non-fatal) — `docs/KNOWN_ISSUES.md`.
-- **Device matrix** incomplete OEM coverage — #64, `test_reports/Q64_DEVICE_MATRIX.md`.
-- **i18n** hardcoded English in ChatHome contacts — #65.
-- **GitHub Actions** use non-standard action versions (`checkout@v7`, etc.) — verify/pin.
+Parent issues **#52** (outbound bootstrap) was closed earlier (#67/#68).
 
 ---
 
-## Recently fixed (do not re-open without re-test on v1.0.26)
+## P1 — Still open
 
-- Missing `diagnosticLog` files on clean clone (`edbf91a`, `c1bd805`) — thanks @shwetaj2820
-- Sealed-sender **ingest** `peerUserId=null` when `sender_id` omitted (`bf15a2c`)
-- Desktop **black screen** — stale `win-unpacked` renderer packaging (`prepare-desktop-pack.mjs`, v1.0.25+)
-- Website **version label drift** — `.env.production.local` stuck at 1.0.24 (`sync_release_version.ps1`, `4790e55`)
+| # | Task |
+|---|------|
+| #58 | Installed clients accept inbound cleartext WebRTC signaling |
+| #60 | Desktop blocking UI when libsignal init fails |
+| #61 | WS integration tests vs ws-ticket auth |
+| #55 | Extend messaging gate tests for Android send failures |
+
+---
+
+## P2 — Debt, polish
+
+- Integration tests skip without live API (`backend/tests/test_ssc_*.py`)
+- iOS not shipped · legacy RSA paths remain
+- Device matrix — **#64** · i18n — **#65**
+- Dependabot npm bumps failing on `main` (non-blocking)
+
+---
+
+## Recently fixed (thanks @shwetaj2820)
+
+- Missing `diagnosticLog` + lib files on clean clone (`edbf91a`, `c1bd805`)
+- Sealed-sender **ingest** `peerUserId=null` (`bf15a2c`, v1.0.26)
+- Desktop black screen packaging · website version drift
+
+**Build on clean `main` today:** `git pull && cd frontend && yarn install && yarn build` — should pass.
 
 ---
 
 ## How to contribute
 
-1. Read [CONTRIBUTING.md](../CONTRIBUTING.md) and [docs/ANDROID_MESSAGING_INVESTIGATION.md](../docs/ANDROID_MESSAGING_INVESTIGATION.md).
-2. Comment on the issue you want.
-3. Open a **draft PR** with tests or repro notes — no production secrets.
-4. Reference this audit issue in the PR description.
-
-**Maintainers:** refresh this board after each release bump.
+1. `git pull origin main`
+2. Read [CONTRIBUTING.md](../CONTRIBUTING.md) and [docs/ANDROID_MESSAGING_INVESTIGATION.md](../docs/ANDROID_MESSAGING_INVESTIGATION.md)
+3. Comment on the issue you want · open a draft PR
+4. For Android P0: build APK from `main` (`SSC-BUILD-APK.bat`) — site APK may lag `main`

@@ -7,14 +7,14 @@
 
 **E2E-encrypted ephemeral messaging** — configurable retention (default 24h), Signal/libsignal on installed clients, WebRTC calls, groups, stories, panic wipe.
 
-## Try the public beta (Android v1.0.26 · Windows v1.0.26)
+## Try the public beta (Android v1.0.27 · Windows v1.0.27)
 
 SSC is in **active testing** — not the final product. Expect bugs and breaking changes between builds.
 
 | Platform | Download |
 |----------|----------|
 | **Android** | [Direct APK](https://www.supersecurechat.com/downloads/SSC-app-release.apk) (~221 MB) |
-| **Windows** | [Installer](https://www.supersecurechat.com/downloads/SSC-Setup-1.0.26.exe) (~182 MB) |
+| **Windows** | [Installer](https://www.supersecurechat.com/downloads/SSC-Setup-1.0.27.exe) (~182 MB) |
 | **All downloads** | [supersecurechat.com/#downloads](https://www.supersecurechat.com/#downloads) |
 
 **Known issues (help wanted):** [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) — especially [Android outbound messaging](docs/ANDROID_MESSAGING_INVESTIGATION.md).
@@ -32,7 +32,7 @@ Browser-tab chat is **not** supported — install the app first ([`InstalledClie
 | **Production API** | [api.supersecurechat.com](https://api.supersecurechat.com) |
 | **License** | [AGPL-3.0](LICENSE) — libsignal in distributed builds requires source availability. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). |
 | **Status** | **Public beta testing** · solo maintainer · **help welcome** |
-| **Build track** | v1.0.26 APK + v1.0.26 Windows — installers live on site |
+| **Build track** | v1.0.27 APK + v1.0.27 Windows — installers live on site |
 | **Roadmap** | [memory/SSC-ROADMAP.md](memory/SSC-ROADMAP.md) — single source of truth (Q.1–Q.64 code complete; wider device QA in progress) |
 
 ---

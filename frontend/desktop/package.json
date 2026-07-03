@@ -1,6 +1,6 @@
 {
   "name": "ssc-desktop",
-  "version": "1.0.26",
+  "version": "1.0.27",
   "description": "SSC desktop client — Windows + Mac with libsignal",
   "private": true,
   "type": "module",

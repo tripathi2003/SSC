@@ -17,7 +17,7 @@ if (-not (Get-Command firebase -ErrorAction SilentlyContinue)) {
     throw "firebase CLI not found"
 }
 
-$notes = "SSC v$Version - sealed-sender ingest fix - supersecurechat.com"
+$notes = "SSC v$Version - Android messaging fixes (sealed fallback, session persist, decrypt) - supersecurechat.com"
 Write-Host "Uploading SSC v$Version to Firebase App Distribution..."
 firebase appdistribution:distribute $Apk --app $AppId --release-notes $notes --groups "testers"
 
